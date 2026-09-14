@@ -195,4 +195,24 @@ export class ProBuyerApiClient {
     const res = await this.request<{ sales: any[] }>(`/api/sales${qs}`, { method: "GET" });
     return { ok: res.ok, data: res.data?.sales, error: res.error };
   }
+
+  // ─── Customer Endpoints ───────────────────────────────────────────────────
+  async getCustomers(): Promise<{ ok: boolean; data?: any[]; error?: string }> {
+    const res = await this.request<{ customers: any[] }>("/api/customers", { method: "GET" });
+    return { ok: res.ok, data: res.data?.customers, error: res.error };
+  }
+
+  async addCustomer(payload: Record<string, unknown>): Promise<{ ok: boolean; data?: any; error?: string }> {
+    const res = await this.request<{ customer: any }>("/api/customers", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return { ok: res.ok, data: res.data?.customer, error: res.error };
+  }
+
+  async getCreditLedger(customerId?: string): Promise<{ ok: boolean; data?: any[]; grandTotal?: number; error?: string }> {
+    const query = customerId ? `?customerId=${encodeURIComponent(customerId)}` : "";
+    const res = await this.request<{ customers: any[]; grandTotal?: number }>(`/api/credit-ledger${query}`, { method: "GET" });
+    return { ok: res.ok, data: res.data?.customers, grandTotal: res.data?.grandTotal, error: res.error };
+  }
 }

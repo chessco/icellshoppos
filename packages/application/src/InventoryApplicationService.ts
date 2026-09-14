@@ -7,7 +7,11 @@ import type {
 } from "@ireader/contracts";
 
 export class InventoryApplicationService {
-  constructor(private readonly apiClient: ProBuyerApiClient) {}
+  private readonly apiClient: ProBuyerApiClient;
+
+  constructor(apiClient: ProBuyerApiClient) {
+    this.apiClient = apiClient;
+  }
 
   async checkDuplicate(req: InventoryCheckRequest): Promise<InventoryCheckResponse> {
     const res = await this.apiClient.checkDuplicate(req);

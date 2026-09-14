@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { MobileScannerCapability } from "../src/capabilities/ScannerCapability.js";
-import { MobileSecureStorageAdapter } from "../src/storage/MobileSecureStorageAdapter.js";
+import { MobileScannerCapability } from "../src/capabilities/ScannerCapability.ts";
+import { MobileSecureStorageAdapter } from "../src/storage/MobileSecureStorageAdapter.ts";
 
 test("MobileScannerCapability correctly categorizes scanned IMEI, Serial, SKU, and QR", () => {
   const scanner = new MobileScannerCapability();

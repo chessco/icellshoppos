@@ -12,16 +12,29 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "react": ["./node_modules/@types/react"],
-      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"],
-      "@ireader/contracts": ["../../packages/contracts/src/index.ts"],
-      "@ireader/api-client": ["../../packages/api-client/src/index.ts"],
-      "@ireader/application": ["../../packages/application/src/index.ts"],
-      "@mobile/*": ["./src/*"]
+      "react": [
+        "./node_modules/@types/react"
+      ],
+      "react/jsx-runtime": [
+        "./node_modules/@types/react/jsx-runtime"
+      ],
+      "@ireader/contracts": [
+        "../../packages/contracts/src/index.ts"
+      ],
+      "@ireader/api-client": [
+        "../../packages/api-client/src/index.ts"
+      ],
+      "@ireader/application": [
+        "../../packages/application/src/index.ts"
+      ],
+      "@mobile/*": [
+        "./src/*"
+      ]
     }
   },
   "include": [
     "src/**/*",
     "App.tsx"
-  ]
+  ],
+  "extends": "expo/tsconfig.base"
 }

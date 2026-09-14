@@ -1,10 +1,10 @@
 import React from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
-import { AuthProvider, useAuth } from "./src/contexts/AuthContext.js";
-import { CartProvider } from "./src/contexts/CartContext.js";
-import { LoginScreen } from "./src/screens/LoginScreen.js";
-import { PosMasterScreen } from "./src/screens/PosMasterScreen.js";
-import { IPAD_THEME } from "./src/theme/tokens.js";
+import { AuthProvider, useAuth } from "./src/contexts/AuthContext";
+import { CartProvider } from "./src/contexts/CartContext";
+import { LoginScreen } from "./src/screens/LoginScreen";
+import { MainAppShell } from "./src/screens/MainAppShell";
+import { IPAD_THEME } from "./src/theme/tokens";
 
 function AppContent() {
   const { session, isLoading } = useAuth();
@@ -23,7 +23,7 @@ function AppContent() {
 
   return (
     <CartProvider>
-      <PosMasterScreen />
+      <MainAppShell />
     </CartProvider>
   );
 }

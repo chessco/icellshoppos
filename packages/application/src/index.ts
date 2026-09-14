@@ -5,3 +5,4 @@ export * from "./CheckoutApplicationService.js";
 export * from "./DeviceNormalizationService.js";
 export * from "./IntakeValidationService.js";
 export * from "./PricePreviewService.js";
+export * from "./CustomerApplicationService.js";

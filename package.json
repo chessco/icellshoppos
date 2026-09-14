@@ -15,7 +15,11 @@
     "db:up": "docker compose -f docker-compose.db.yml up -d",
     "db:down": "docker compose -f docker-compose.db.yml down",
     "db:migrate": "prisma migrate deploy",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "mobile:start": "npm --prefix apps/mobile start",
+    "mobile:ios": "npm --prefix apps/mobile run ios",
+    "mobile:android": "npm --prefix apps/mobile run android",
+    "mobile:test": "node --test apps/mobile/test/mobile-capabilities.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.16.0",
@@ -46,5 +50,14 @@
     "tailwindcss": "^4.1.14",
     "tsx": "^4.20.5",
     "typescript": "^5"
+  },
+  "overrides": {
+    "react-native": {
+      ".": "0.76.9",
+      "@types/react": "$@types/react"
+    },
+    "@react-native/virtualized-lists": {
+      "@types/react": "$@types/react"
+    }
   }
 }

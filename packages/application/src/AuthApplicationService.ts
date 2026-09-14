@@ -8,10 +8,16 @@ export interface IAuthStoragePort {
 }
 
 export class AuthApplicationService {
+  private readonly apiClient: ProBuyerApiClient;
+  private readonly storagePort: IAuthStoragePort;
+
   constructor(
-    private readonly apiClient: ProBuyerApiClient,
-    private readonly storagePort: IAuthStoragePort
-  ) {}
+    apiClient: ProBuyerApiClient,
+    storagePort: IAuthStoragePort
+  ) {
+    this.apiClient = apiClient;
+    this.storagePort = storagePort;
+  }
 
   async login(payload: LoginRequestPayload): Promise<LoginResponsePayload> {
     const result = await this.apiClient.login(payload);

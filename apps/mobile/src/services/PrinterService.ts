@@ -10,14 +10,14 @@
 export interface PrintReceiptPayload {
   saleId: string;
   customerName?: string;
-  items: Array<{
+  items?: Array<{
     model: string;
     imei?: string;
     salePrice: number;
   }>;
   totalAmount: number;
-  paymentMethod: string;
-  createdAt: string;
+  paymentMethod?: string;
+  createdAt?: string;
 }
 
 export interface IPrinterService {

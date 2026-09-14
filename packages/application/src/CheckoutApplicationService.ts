@@ -7,7 +7,11 @@ import type {
 } from "@ireader/contracts";
 
 export class CheckoutApplicationService {
-  constructor(private readonly apiClient: ProBuyerApiClient) {}
+  private readonly apiClient: ProBuyerApiClient;
+
+  constructor(apiClient: ProBuyerApiClient) {
+    this.apiClient = apiClient;
+  }
 
   validateSale(payload: CompleteSaleRequestPayload): { valid: boolean; error?: string } {
     if (!payload.items || payload.items.length === 0) {
