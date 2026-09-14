@@ -1,0 +1,16 @@
+# Electron Desktop Local Gitignore
+node_modules/
+dist/
+dist-electron/
+out/
+release/
+electron.vite.config.*.mjs
+
+# Environment
+.env*
+!.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

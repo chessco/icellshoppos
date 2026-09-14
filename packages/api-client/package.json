@@ -1,0 +1,12 @@
+{
+  "name": "@ireader/api-client",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Platform-independent typed HTTP client for Pro Buyer API",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@ireader/contracts": "*"
+  }
+}

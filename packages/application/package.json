@@ -1,0 +1,13 @@
+{
+  "name": "@ireader/application",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Platform-independent Application Services for iReader by Pro Buyer",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@ireader/contracts": "*",
+    "@ireader/api-client": "*"
+  }
+}

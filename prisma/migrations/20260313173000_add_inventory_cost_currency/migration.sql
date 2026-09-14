@@ -1,0 +1,2 @@
+ALTER TABLE "InventoryItem"
+ADD COLUMN "costCurrency" TEXT NOT NULL DEFAULT 'MXN';

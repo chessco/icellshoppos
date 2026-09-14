@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "iReader POS",
+    "slug": "ireader-pos",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#090d16"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.icellshop.ireaderpos",
+      "infoPlist": {
+        "NSCameraUsageDescription": "iReader requires camera access to scan device IMEIs and barcodes for POS checkout."
+      }
+    },
+    "plugins": []
+  }
+}

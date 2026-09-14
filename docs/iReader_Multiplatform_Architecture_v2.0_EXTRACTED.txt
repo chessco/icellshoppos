@@ -1,0 +1,594 @@
+iReader Multiplatform Architecture v1.0
+Official Architecture Definition — Apple-first, API-first, Hardware-aware
+Product: iReader by Pro Buyer
+Ecosystem: iCellShop / Pro Buyer
+Target platforms: Windows · macOS · iPhone · iPad
+Status: APPROVED ARCHITECTURE BASELINE
+Strategic priority: iPad POS first; Windows remains the operational and hardware baseline.
+A. Executive Summary
+iReader will be evolved as a single product architecture with multiple platform runtimes. The existing Windows Electron application is not replaced; it becomes the first production implementation of the new architecture and is refactored incrementally.
+The central architectural correction is to explicitly recognize the existing Pro Buyer API as the shared backend platform already consumed by the Windows application and the web application. iPad must therefore consume the same governed API surface rather than introducing a second backend or a parallel business system.
+The approved strategy is: Shared Domain + Shared Application + API Contracts + Shared API Client, with platform-specific Presentation and Platform Adapters. Windows uses Electron/React; macOS initially uses the desktop stack with native helpers where hardware requires them; iPhone/iPad use React Native + Expo Development Builds with native Swift modules where justified.
+The iPad POS is the first new experience because the business requirement is to provide sales staff with an Apple-native workflow. The first iPad release should focus on inventory, search, QR/camera intake, product/device detail, cart, checkout and receipt/label workflows rather than attempting to reproduce the dense Windows Add Device screen.
+Deep inspection of an arbitrary iPhone/iPad remains a desktop-class capability unless a public Apple-supported mobile mechanism is proven. A Device Bridge is therefore retained as an approved architectural capability for cases where an iPad needs a Windows/macOS host to perform device operations.
+B. Current State Assessment
+Current Windows stack:
+Electron 31.7.7
+Electron-Vite 2.3.0
+Vite 5.4.20
+React 19.2.3
+TypeScript
+electron-builder
+NSIS / portable ZIP
+Preload + contextBridge + IPC + Main Process
+AppleUsbAdapter using desktop Apple-device tooling
+Current product capabilities include Inventory, Intake, Checkout, Sales History, Credit Ledger, Data Admin, Public Inventory, label printing and QR workflows.
+The current Windows application already consumes the Pro Buyer web/API platform. This is an architectural advantage: the new iPad application should become another first-class API client, not a separate system.
+C. Architectural Principles
+One product architecture; multiple platform experiences.
+The Pro Buyer API is the central backend/system of record.
+API contracts are explicit and versioned.
+Shared domain/application logic must not depend on Electron, React or React Native.
+Platform hardware access is isolated behind ports/adapters.
+Native-quality Apple UX takes priority over maximum visual/code reuse.
+The current Windows product is preserved and migrated incrementally.
+iPad POS is the first new product experience.
+Deep Apple-device inspection is capability-based, not assumed to be universal.
+Security, observability and offline behavior are architectural concerns, not later additions.
+D. Platform Strategy
+Platform
+Runtime
+Primary role
+Status
+Windows
+Electron + React + TypeScript
+Current retail desktop + deep device operations
+Existing / evolve
+macOS
+Electron + React initially + native helper where justified
+Apple desktop + potential Device Bridge host
+Phase 2
+iPad
+React Native + Expo Development Build + native modules
+Primary Apple POS / retail workstation
+Phase 1 new
+iPhone
+React Native + Expo Development Build + native modules
+Mobile inventory / scanning / operations
+After iPad
+React Native for Windows/macOS is not the baseline because it would introduce another desktop runtime while the existing Electron product already has working retail and hardware infrastructure. Tauri remains a future alternative, not a migration target for the current product.
+E. Technology Evaluation
+Option
+Reuse
+Hardware
+Native UX
+Migration risk
+Decision
+Electron
+High with existing app
+High desktop
+Strong desktop
+Low
+APPROVED Windows/macOS baseline
+Tauri
+High web reuse
+High desktop
+Strong desktop
+Medium/High
+Future option
+React Native + Expo
+High mobile/domain
+High with native modules
+Excellent mobile
+Low/Medium
+APPROVED iPad/iPhone
+RN Windows/macOS
+High
+Medium
+Good
+High here
+Not baseline
+Flutter
+Low existing TS reuse
+High via plugins
+Excellent
+High
+Rejected
+SwiftUI
+Low cross-platform reuse
+Excellent Apple
+Excellent
+High
+Targeted native modules only
+Fully native Apple
+Low
+Excellent
+Excellent
+High
+Not primary product architecture
+F. Recommended Technology Stack
+Frontend desktop: React + TypeScript.
+Windows/macOS desktop shell: Electron initially.
+Mobile: React Native + Expo Development Builds.
+Native Apple extensions: Swift / native modules only where required.
+Shared product core: TypeScript packages independent of UI runtime.
+Backend: existing Pro Buyer API, evolved under explicit contracts.
+Shared API Client: typed client package consumed by iReader applications.
+Authentication: centralized Pro Buyer auth with platform secure credential storage.
+Windows secure storage: Windows Credential Manager / DPAPI abstraction.
+Apple secure storage: Keychain abstraction.
+Printing: PrinterService abstraction.
+CI/CD: GitHub Actions plus macOS build capacity; Xcode tooling/TestFlight for Apple releases.
+G. System Architecture
+The most important architectural model is now explicitly API-first:
+                         PRO BUYER PLATFORM                              │                         Pro Buyer API                              │                    API Contracts / Versioning                              │                     Shared iReader API Client                              │                 ┌────────────┼────────────┐                 │            │            │              Windows       macOS        iPad/iPhone              Electron      Electron       RN/Expo                 │            │            │                 └───────┬────┴─────┬──────┘                         │          │                 Shared Application / Domain                         │                   Platform Ports                         │          Windows / macOS / iOS / iPadOS adapters
+The web application and iReader applications may have different presentation and application-layer needs, but they share the same Pro Buyer API as the system of record. The API must therefore be treated as a product platform boundary rather than as an implementation detail of the web application.
+H. Application Architecture
+Required dependency direction:
+Presentation → Application → Domain → Ports → Infrastructure / Platform
+Presentation: platform-specific screens, navigation and interaction.
+Application: use cases such as Add Device, Search Inventory, Checkout and Sync.
+Domain: entities, value objects, invariants and domain services.
+Ports: contracts for devices, printers, secure storage and other capabilities.
+Infrastructure: API client, persistence, device protocols and OS integrations.
+Platform: concrete Windows/macOS/iOS/iPadOS implementations.
+Forbidden:
+React component → USB command
+React Native screen → database
+Electron renderer → Node filesystem
+UI → child_process
+UI → raw HTTP requests containing business logic
+I. Shared Core Architecture
+Recommended monorepo:
+iReader/├── apps/│   ├── desktop/│   │   ├── windows/│   │   └── macos/│   └── mobile/│       ├── ios/│       └── ipados/├── packages/│   ├── contracts/│   ├── api-client/│   ├── domain/│   ├── application/│   ├── auth/│   ├── inventory/│   ├── intake/│   ├── devices/│   ├── diagnostics/│   ├── checkout/│   ├── sales/│   ├── labels/│   ├── validation/│   └── design-tokens/├── platform/│   ├── windows/│   ├── macos/│   ├── ios/│   └── ipados/└── tooling/
+Key rule: platform packages may depend on shared packages; shared domain packages may never depend on platform packages.
+J. API Platform Architecture
+This section is elevated to a first-class architectural concern because the existing Windows application already consumes the Pro Buyer API.
+Target model:
+Web Client ───────────────┐iReader Windows ──────────┤iReader macOS ────────────┼──→ Pro Buyer API → DatabaseiReader iPad ─────────────┤iReader iPhone ───────────┘
+Inventory, Devices, Intake, Checkout, Sales, Users, Stores and Labels remain backend capabilities.
+API contracts must be documented independently from UI implementation.
+Introduce explicit API versioning.
+Create a typed shared API client for iReader.
+Normalize errors into machine-readable codes plus operator-safe messages.
+Use idempotency keys for retryable mutations.
+Use client operation IDs for offline queues.
+Do not duplicate business rules in iPad just because the web currently contains them.
+Where current API behavior is weak, evolve it compatibly rather than create an iPad-only endpoint family.
+The first backend task is an API audit, not a backend rewrite: inventory existing endpoints, authentication, payloads, error behavior and business rules, then identify what must be formalized for iPad.
+K. Platform Adapter Architecture
+Use capability-based ports:
+DeviceDiscovery
+DeviceIdentity
+DeviceDiagnostics
+BatteryInformation
+DeviceConnection
+DeviceTransport
+PrinterService
+SecureStorage
+CameraScanner
+LocalNetwork
+Each adapter must report supported capabilities explicitly. Unsupported capabilities must return typed capability errors and never fabricate information.
+L. Apple Device Communication Strategy
+Windows remains the reference implementation for deep device operations. The existing AppleUsbAdapter is retained and wrapped behind a stable device contract.
+macOS should be evaluated as the preferred Apple desktop/bridge host. Public Apple frameworks such as USBDriverKit are relevant for supported driver/device scenarios, but they do not establish a general public equivalent to the desktop iPhone servicing stack for arbitrary iPhone inspection.
+iOS/iPadOS must not be designed around private APIs or assumptions that a USB cable grants unrestricted access to another iPhone. External Accessory is intended for supported accessories, and modern Apple accessory/peer APIs should be evaluated for supported workflows.
+M. Device Connectivity Matrix
+Scenario
+Deep inspection
+Recommended role
+Status
+Windows → iPhone
+Yes, subject to current adapter/tooling
+Primary intake/device station
+Baseline supported
+Windows → iPad
+Yes, subject to current adapter/tooling
+Primary intake/device station
+Baseline supported
+macOS → iPhone
+Requires validation of public/supported mechanism
+Device station / Bridge host
+Conditional
+macOS → iPad
+Requires validation
+Device station / Bridge host
+Conditional
+iPhone → iPhone
+No desktop-equivalent public path assumed
+Mobile + Bridge
+Not baseline direct
+iPhone → iPad
+No deep inspection assumed
+Mobile + Bridge
+Not baseline direct
+iPad → iPhone
+Accessory/USB scenarios possible; deep servicing unproven
+Mobile + Bridge
+Conditional
+iPad → iPad
+Peer/accessory communication possible; deep servicing unproven
+Mobile + Bridge
+Conditional
+Confidence must be validated with physical-device proof-of-concept before committing product promises.
+N. iOS/iPadOS Constraints
+No private Apple APIs.
+No assumption of arbitrary USB access to another iPhone.
+External Accessory/MFi applies to supported accessory scenarios.
+Bluetooth and local-network capabilities require appropriate permissions and privacy declarations.
+USBDriverKit on supported iPadOS configurations does not imply access to iPhone internal servicing protocols.
+App Store distribution requires public/documented APIs and review compliance.
+Any required entitlement must be identified before implementation.
+O. Device Bridge Architecture
+Approved future capability:
+iReader iPad/iPhone      │      │ Secure local protocol      ▼iReader Device Bridge      │ ┌────┴─────┐Windows    macOS Adapter   Adapter      │      ▼Apple device
+Pair the mobile client to a trusted bridge.
+Authenticate the bridge and mobile client.
+Expose high-level operations only.
+Never expose arbitrary shell/USB execution through the bridge.
+Normalize device results into shared DeviceIdentity/Diagnostics models.
+Audit operations while minimizing sensitive identifiers in logs.
+Decision: Device Bridge is an approved architectural escape hatch; it is not required for the first iPad POS release.
+P. iPad POS Strategy
+The first iPad product should be designed specifically for sales rather than reproducing the Windows Add Device page.
+Recommended first flow:Login → Inventory → Search/Scan → Product/Device Detail → Cart → Checkout → Confirmation → Receipt/Label
+Camera and QR scanning are first-class mobile capabilities.
+Use large touch targets and clear status.
+Use sidebar/multi-column patterns where appropriate on iPad.
+Support keyboard and pointer input.
+Keep the workflow fast enough for repeated retail transactions.
+Move secondary/administrative fields into focused sheets or detail sections.
+Deep device diagnostics should appear only where the platform can actually supply them.
+Q. Windows Refactoring Strategy
+Do not perform a large rewrite. Refactor Windows into the new architecture incrementally.
+Audit current API consumption and business rules.
+Define canonical domain models.
+Define API contracts and shared API client.
+Introduce application services around existing workflows.
+Wrap AppleUsbAdapter behind Device ports without changing its internals.
+Wrap printing behind PrinterService.
+Introduce secure storage abstraction.
+Move business decisions out of renderer/UI code.
+Validate Windows parity.
+Only then remove obsolete paths.
+Windows becomes the first production consumer of the shared architecture rather than a separate legacy branch.
+R. Authentication & Security
+Asset
+Storage
+Policy
+Access token
+Platform secure store
+Short-lived
+Refresh/session credential
+Keychain / Credential Manager
+Protected until expiry/logout
+IMEI / IMEI2
+Minimal local retention
+Encrypted/controlled; mask logs
+Serial
+Minimal local retention
+Encrypted/controlled
+Customer data
+Only when required
+Minimize + encrypt/control
+Diagnostics
+Bounded cache
+Short retention where possible
+Electron: contextIsolation=true, nodeIntegration=false for remote/untrusted content, sandbox where viable, strict IPC validation.
+No arbitrary shell execution from renderer.
+Validate IPC sender and payload.
+Restrict navigation and external URLs.
+Use code signing and update integrity.
+Apple: Keychain, App Sandbox, entitlements, privacy manifests, code signing and notarization as applicable.
+S. Offline & Synchronization
+State model: ONLINE / OFFLINE / SYNCING / SYNC_ERROR / CONFLICT
+Bounded local queue for justified retail operations.
+Client operation IDs and idempotency keys.
+Server remains source of truth.
+Explicit conflict policy.
+Clear sync status for operators.
+Minimize sensitive local retention.
+T. Printing Architecture
+Label generation and printer transport are separate.
+LabelDocument → LabelJob → PrinterService → Platform Printer Adapter
+Platform
+Preferred approach
+Notes
+Windows
+Native/OS + vendor/network adapters
+Validate Zebra/Rollo/Dymo models
+macOS
+System printing + vendor/network
+Sandbox/entitlement review
+iPad/iPhone
+AirPrint/network first; Bluetooth/vendor SDK if justified
+Avoid assuming generic USB printer support
+U. Design System
+Brand Identity → Shared Semantic Tokens → Platform Components
+Shared semantic colors and status meanings.
+Typography scale with Dynamic Type considerations on Apple.
+Spacing, radius and elevation tokens.
+Accessibility semantics.
+Dark/light mode.
+Native interaction patterns per platform.
+The visual identity is shared; the component behavior is platform-specific.
+V. Apple Human Interface Strategy
+iPhone: tab bar, navigation stacks, sheets, touch-first layouts.
+iPad: sidebar/split navigation, toolbar, pointer, keyboard, multi-column information density.
+macOS: sidebar, toolbar, menus, shortcuts, resizable windows, desktop density.
+Do not use a generic responsive web layout as the definition of the Apple experience.
+W. Domain Model
+AppleDevice
+DeviceIdentity
+DeviceSpecifications
+BatteryHealth
+DeviceDiagnostics
+DeviceConnection
+DeviceStatus
+InventoryItem
+InventoryIntake
+Label
+Printer
+Store
+User
+Session
+Sale
+Checkout
+DeviceIdentity is a value-oriented representation of identifiers. DeviceConnection describes how the device was observed and must not be confused with the AppleDevice entity.
+X. Repository Strategy
+Decision: MONOREPO
+One domain and one product contract surface.
+Atomic changes across API client, domain and apps.
+Shared tooling and CI.
+Explicit package boundaries.
+Platform-specific code remains isolated.
+Dependency-direction checks are mandatory.
+Y. CI/CD
+Target
+Build
+Signing
+Distribution
+Windows
+GitHub Actions Windows runner
+Windows code signing
+Installer / controlled update channel
+macOS
+macOS runner / Mac
+Developer ID + Hardened Runtime
+DMG/direct; optional store
+iPad/iPhone
+Xcode/EAS/macOS
+Apple signing
+TestFlight / App Store
+Use secure CI secrets and never commit signing credentials or API keys.
+Z. Observability
+Application errors and crashes.
+API failures and latency.
+Device/USB failures.
+Printer failures.
+Sync failures.
+Bridge connection health.
+Performance metrics.
+Operator messages and developer diagnostics are separate channels. Do not expose stack traces, tokens or unnecessary IMEI/customer data.
+AA. Testing Strategy
+Domain unit tests.
+Application use-case tests.
+API contract tests.
+Platform adapter tests.
+Physical iPhone/iPad/Windows/macOS device matrix.
+Printer compatibility matrix.
+IPC/security tests.
+Offline replay/idempotency tests.
+End-to-end retail flows.
+AB. Risk Register
+Risk
+Probability
+Impact
+Mitigation
+Mobile cannot perform desktop-grade device inspection
+High
+Critical
+Desktop/Bridge capability; physical proof-of-concept
+API contract inconsistency
+Medium
+High
+API audit + versioned contracts + shared client
+Windows refactor disrupts retail
+High
+Critical
+Incremental extraction + parity gates
+Electron attack surface
+Medium
+High
+Isolation, sandbox, strict IPC, signing
+Printer fragmentation
+High
+Medium
+Compatibility matrix + adapters
+Apple policy changes
+Medium
+High
+Public APIs + annual architecture review
+Native module maintenance
+Medium
+High
+Minimize and isolate Swift modules
+Offline conflicts
+Medium
+High
+Idempotency + explicit reconciliation
+App Store rejection
+Low/Medium
+High
+Early TestFlight validation
+External device tooling breaks
+Medium
+High
+Pin/version tooling + adapter isolation
+AC. Architecture Decision Records
+ADR-001 — Desktop framework
+Decision: Electron for Windows/macOS initially
+Why: Preserves proven Windows product and hardware workflow; avoids unnecessary rewrite.
+Risk / consequence: Review if security/maintenance economics change.
+ADR-002 — Mobile framework
+Decision: React Native + Expo Development Builds
+Why: Native-quality mobile experience with strong TypeScript/domain reuse.
+Risk / consequence: Requires native build pipeline and occasional Swift.
+ADR-003 — Shared code
+Decision: TypeScript domain/application/contracts/API client
+Why: Maximizes meaningful reuse without coupling to UI/runtime.
+Risk / consequence: Strict dependency boundaries required.
+ADR-004 — Repository
+Decision: Monorepo
+Why: One product, one API contract surface, multiple clients.
+Risk / consequence: Requires package governance.
+ADR-005 — API boundary
+Decision: Pro Buyer API is system of record
+Why: Windows already consumes it; iPad should become another client.
+Risk / consequence: API must be formalized/versioned.
+ADR-006 — API client
+Decision: Shared typed iReader API Client
+Why: Prevents each app from inventing request/response logic.
+Risk / consequence: Must remain independent from UI.
+ADR-007 — Device communication
+Decision: Capability-based platform adapters
+Why: Hardware access varies by OS.
+Risk / consequence: More contracts, but prevents false portability.
+ADR-008 — Windows migration
+Decision: Incremental refactoring
+Why: Protects current retail operation and IP.
+Risk / consequence: Migration takes multiple phases.
+ADR-009 — Secure storage
+Decision: Platform secure stores
+Why: Uses OS security facilities.
+Risk / consequence: Requires abstraction.
+ADR-010 — Printing
+Decision: PrinterService abstraction
+Why: Printer stacks differ by platform/vendor.
+Risk / consequence: Requires physical compatibility tests.
+ADR-011 — Offline
+Decision: Bounded queue + idempotency
+Why: Improves retail resilience without creating a second source of truth.
+Risk / consequence: Conflict rules required.
+ADR-012 — Design system
+Decision: Shared tokens + native platform components
+Why: Same identity, native behavior.
+Risk / consequence: More than one component implementation.
+ADR-013 — iOS/iPadOS connectivity
+Decision: No direct deep inspection assumption
+Why: Public Apple capabilities do not establish desktop-equivalent servicing access.
+Risk / consequence: Validate before product commitment.
+ADR-014 — Device Bridge
+Decision: Approved optional architecture
+Why: Provides a supported path for mobile-to-desktop device operations.
+Risk / consequence: Pairing/deployment complexity.
+ADR-015 — macOS
+Decision: Desktop + possible Bridge host
+Why: Strategically useful Apple hardware platform.
+Risk / consequence: Native helper/entitlement complexity.
+ADR-016 — Windows
+Decision: Reference hardware platform
+Why: Current AppleUsbAdapter is valuable operational IP.
+Risk / consequence: Legacy dependency maintenance.
+ADR-017 — CI/CD
+Decision: GitHub Actions + macOS capacity
+Why: Supports heterogeneous releases.
+Risk / consequence: Signing secrets and Apple tooling complexity.
+ADR-018 — Distribution
+Decision: Platform-native distribution channels
+Why: Matches OS security/distribution models.
+Risk / consequence: Multiple release pipelines.
+ADR-019 — First product release
+Decision: iPad POS first
+Why: Directly serves client business priority and validates Apple UX.
+Risk / consequence: Deep device servicing deferred.
+AD. Migration & Delivery Strategy
+The delivery strategy is now explicitly business-priority driven:
+Audit the existing Pro Buyer API and Windows API consumption.
+Create canonical contracts and shared API client.
+Define shared domain/application boundaries.
+Wrap current Windows device and printer infrastructure behind ports.
+Build the iPad POS shell and Apple-native navigation.
+Connect iPad to the existing Pro Buyer API through the shared client.
+Pilot iPad POS with real sales workflows.
+Refactor Windows business logic onto the shared application/domain layer.
+Validate macOS hardware/device workflows.
+Add Device Bridge only if a validated mobile requirement requires it.
+Expand to iPhone after iPad workflows stabilize.
+AE. Go / No-Go Gates
+Gate
+Pass criteria
+Failure action
+G1 API
+Current API capabilities and auth are documented
+Do not create iPad-specific backend duplication
+G2 Contracts
+Shared contracts compile and model required workflows
+Refine domain/contracts
+G3 Windows
+Existing app remains operational
+Stop and restore baseline
+G4 iPad POS
+Core sales workflow works against production-like API
+Refine UX/application layer
+G5 Hardware
+Required device capabilities proven on real hardware
+Restrict capability or use Bridge
+G6 Printing
+Supported printer matrix passes
+Limit supported models
+G7 Security
+No critical auth/IPC/storage issues
+No release
+G8 Distribution
+Apple/Windows distribution path validated
+Adjust capabilities/release channel
+AF. Final Architecture
+APPROVED:
+Pro Buyer API = central backend/system of record.
+Shared iReader contracts + typed API client.
+Shared TypeScript domain/application core.
+Electron + React desktop for Windows and initially macOS.
+React Native + Expo Development Builds for iPad/iPhone.
+Swift/native modules only at explicit capability boundaries.
+Capability-based device adapters.
+Current Windows AppleUsbAdapter preserved and wrapped, then refactored incrementally.
+iPad POS is the first new product experience.
+Device Bridge is an approved optional architecture for mobile-to-desktop device operations.
+Monorepo with strict dependency boundaries.
+The architectural goal is not to make Windows, macOS, iPhone and iPad identical. It is to make them coherent clients of the same product platform while allowing each operating system to behave natively.
+AG. First 10 Implementation Steps
+Audit Pro Buyer API endpoints, authentication, payloads, errors and existing Windows consumers.
+Create a capability inventory of the current Windows application.
+Define canonical shared domain models for Device, Inventory, Intake, Sale, Checkout and Label.
+Define versioned API contracts and the shared iReader API Client.
+Create the monorepo package boundaries and dependency rules.
+Wrap the existing Windows AppleUsbAdapter behind Device capability contracts without changing its implementation.
+Wrap existing Windows printing behind PrinterService.
+Build the iPad POS foundation: authentication, navigation, inventory, search and QR/camera flow.
+Connect iPad POS to the existing Pro Buyer API through the shared API Client and validate real sales workflows.
+After iPad MVP validation, refactor Windows business logic onto the shared domain/application layer while preserving production behavior.
+AH. Five-Year Architecture Test
+If responsible for iReader for the next five years, this architecture would be approved because it preserves the proven Windows product, elevates the existing Pro Buyer API into an explicit platform boundary, gives iPad a genuinely native path, and isolates the highest-risk hardware dependencies behind adapters and an optional bridge.
+The architecture avoids two common failures: rewriting a working Windows application before business value is delivered, and creating a separate iPad system that later becomes expensive to reconcile with Windows and the web.
+Sources
+Apple Developer — USBDriverKit — https://developer.apple.com/documentation/USBDriverKit
+Apple Developer — Creating drivers for iPadOS — https://developer.apple.com/documentation/driverkit/creating-drivers-for-ipados
+Apple Developer — External Accessory — https://developer.apple.com/documentation/externalaccessory
+Apple Developer — AccessorySetupKit — https://developer.apple.com/documentation/AccessorySetupKit
+Apple Developer — DeviceDiscoveryUI — https://developer.apple.com/documentation/devicediscoveryui
+Apple Developer — Core Bluetooth — https://developer.apple.com/documentation/corebluetooth
+Apple Developer — Local Network Privacy — https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy
+Apple Developer — App Review Guidelines — https://developer.apple.com/app-store/review/guidelines/
+Apple Developer — Keychain Services — https://developer.apple.com/documentation/security/keychain-services
+Apple Developer — Configuring the macOS App Sandbox — https://developer.apple.com/documentation/xcode/configuring-the-macos-app-sandbox
+Apple Developer — Notarizing macOS Software — https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution
+Electron — Security — https://www.electronjs.org/docs/latest/tutorial/security
+Electron — Context Isolation — https://www.electronjs.org/docs/latest/tutorial/context-isolation
+React Native — Out-of-Tree Platforms — https://reactnative.dev/docs/next/out-of-tree-platforms
+Tauri — Prerequisites — https://tauri.app/start/prerequisites/
+Expo — Development Builds / Custom native code — https://docs.expo.dev/develop/development-builds/introduction/
+Architecture Approval
+Official baseline: iReader Multiplatform Architecture v1.0 — UPDATED
+Strategic sequence: Pro Buyer API/Core → iPad POS → Windows refactoring → macOS → Device Bridge as needed → iPhone
+Implementation constraint: no large Windows rewrite; preserve production behavior throughout migration.

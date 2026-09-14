@@ -1,0 +1,12 @@
+{
+  "name": "@ireader/contracts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Platform-independent canonical contracts for iReader by Pro Buyer",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit"
+  }
+}
