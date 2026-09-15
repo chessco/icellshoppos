@@ -2,6 +2,14 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR ?? ".next-local",
+  allowedDevOrigins: [
+    "192.168.100.73",
+    "192.168.100.*",
+    "192.168.*.*",
+    "*.ngrok-free.app",
+    "*.ngrok.io",
+    "*.loca.lt",
+  ],
   async headers() {
     return [
       {
