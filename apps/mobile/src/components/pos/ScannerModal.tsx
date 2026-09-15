@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Modal,
   View,
@@ -8,6 +8,7 @@ import {
   StyleSheet,
   TouchableWithoutFeedback,
 } from "react-native";
+import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
 import { IPAD_THEME } from "../../theme/tokens";
 import { Button } from "../ui/Button";
 import { MobileScannerCapability } from "../../capabilities/ScannerCapability";
@@ -20,7 +21,19 @@ interface ScannerModalProps {
 
 export function ScannerModal({ visible, onClose, onScanResult }: ScannerModalProps) {
   const [manualCode, setManualCode] = useState("");
+  const [hasScanned, setHasScanned] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
   const scanner = React.useMemo(() => new MobileScannerCapability(), []);
+
+  useEffect(() => {
+    if (visible) {
+      setHasScanned(false);
+      setManualCode("");
+      if (!permission?.granted) {
+        void requestPermission();
+      }
+    }
+  }, [visible]);
 
   const handleProcessCode = (code: string) => {
     if (!code.trim()) return;
@@ -28,6 +41,12 @@ export function ScannerModal({ visible, onClose, onScanResult }: ScannerModalPro
     onScanResult(code, parsed.type, parsed.normalizedValue);
     setManualCode("");
     onClose();
+  };
+
+  const handleBarcodeScanned = (result: BarcodeScanningResult) => {
+    if (hasScanned || !result.data) return;
+    setHasScanned(true);
+    handleProcessCode(result.data);
   };
 
   return (
@@ -43,14 +62,49 @@ export function ScannerModal({ visible, onClose, onScanResult }: ScannerModalPro
                 </TouchableOpacity>
               </View>
 
-              {/* Viewfinder simulation box */}
+              {/* Viewfinder with Live Camera View */}
               <View style={styles.viewfinder}>
-                <View style={styles.reticle}>
+                {permission?.granted ? (
+                  <CameraView
+                    style={StyleSheet.absoluteFill}
+                    facing="back"
+                    barcodeScannerSettings={{
+                      barcodeTypes: [
+                        "qr",
+                        "code128",
+                        "code39",
+                        "ean13",
+                        "ean8",
+                        "upc_a",
+                        "upc_e",
+                        "code93",
+                        "itf14",
+                        "pdf417",
+                        "datamatrix",
+                      ],
+                    }}
+                    onBarcodeScanned={hasScanned ? undefined : handleBarcodeScanned}
+                  />
+                ) : (
+                  <View style={styles.permissionPrompt}>
+                    <Text style={styles.permissionText}>Camera access required to scan</Text>
+                    <Button
+                      title="Enable Camera"
+                      variant="secondary"
+                      onPress={() => void requestPermission()}
+                    />
+                  </View>
+                )}
+
+                {/* Reticle Overlay */}
+                <View style={styles.reticle} pointerEvents="none">
                   <View style={[styles.corner, styles.tl]} />
                   <View style={[styles.corner, styles.tr]} />
                   <View style={[styles.corner, styles.bl]} />
                   <View style={[styles.corner, styles.br]} />
-                  <Text style={styles.reticleText}>Point camera at IMEI or Barcode</Text>
+                  <Text style={styles.reticleText}>
+                    {hasScanned ? "Processing..." : "Point camera at IMEI or Barcode"}
+                  </Text>
                 </View>
               </View>
 
@@ -71,7 +125,6 @@ export function ScannerModal({ visible, onClose, onScanResult }: ScannerModalPro
                     autoCapitalize="characters"
                     onSubmitEditing={() => handleProcessCode(manualCode)}
                     returnKeyType="done"
-                    autoFocus
                   />
                   <Button
                     title="Process"
@@ -190,5 +243,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: IPAD_THEME.spacing.md,
     color: IPAD_THEME.colors.textPrimary,
     fontSize: 15,
+  },
+  permissionPrompt: {
+    ...StyleSheet.absoluteFill,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: IPAD_THEME.spacing.md,
+    gap: IPAD_THEME.spacing.sm,
+    backgroundColor: "#000000",
+    zIndex: 1,
+  },
+  permissionText: {
+    color: IPAD_THEME.colors.textSecondary,
+    fontSize: 13,
+    textAlign: "center",
   },
 });

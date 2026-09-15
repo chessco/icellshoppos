@@ -1,8 +1,8 @@
-import React, { createContext, useContext, useEffect, useState, useMemo } from "react";
+import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from "react";
 import { ProBuyerApiClient } from "@ireader/api-client";
 import { AuthApplicationService } from "@ireader/application";
 import type { SessionMeResponse, IAuthToken } from "@ireader/contracts";
-import { CookieAuthToken } from "@ireader/contracts";
+import { CookieAuthToken, BearerAuthToken } from "@ireader/contracts";
 import { MobileSecureStorageAdapter } from "../storage/MobileSecureStorageAdapter";
 
 interface AuthContextValue {
@@ -33,54 +33,72 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const storage = useMemo(() => new MobileSecureStorageAdapter(), []);
 
-  const [currentToken, setCurrentToken] = useState<IAuthToken | null>(null);
+  const [currentToken, setCurrentTokenState] = useState<IAuthToken | null>(null);
+  const currentTokenRef = useRef<IAuthToken | null>(null);
+
+  const setCurrentToken = (token: IAuthToken | null) => {
+    currentTokenRef.current = token;
+    setCurrentTokenState(token);
+  };
 
   const apiClient = useMemo(() => {
     return new ProBuyerApiClient({
       baseUrl,
-      getToken: () => currentToken,
+      getToken: () => currentTokenRef.current,
       onUnauthorized: () => {
         setSession(null);
         setCurrentToken(null);
         void storage.removeItem("auth_token");
       },
     });
-  }, [baseUrl, currentToken, storage]);
+  }, [storage]);
 
   const authService = useMemo(() => {
     return new AuthApplicationService(apiClient, storage);
   }, [apiClient, storage]);
 
-  // Restore stored session on mount
+  // Restore stored session once on mount
   useEffect(() => {
+    let isMounted = true;
+
     async function restoreSession() {
       setIsLoading(true);
       try {
         const savedUrl = await storage.getItem("base_url");
-        if (savedUrl) {
+        if (savedUrl && isMounted) {
           setBaseUrlState(savedUrl);
           apiClient.setBaseUrl(savedUrl);
         }
 
         const savedTokenVal = await storage.getItem("auth_token");
-        if (savedTokenVal) {
-          const token = new CookieAuthToken("icellshop_session", savedTokenVal);
+        if (savedTokenVal && isMounted) {
+          const token = new BearerAuthToken(savedTokenVal);
           setCurrentToken(token);
           const meRes = await apiClient.me();
-          if (meRes.ok && meRes.data?.session) {
+          if (meRes.ok && meRes.data?.session && isMounted) {
             setSession(meRes.data.session);
             setOrganizations(meRes.data.organizations || []);
             setActiveOrgId(meRes.data.session.activeOrganizationId || null);
+          } else if (isMounted) {
+            setCurrentToken(null);
+            void storage.removeItem("auth_token");
           }
         }
       } catch {
         // Continue unauthenticated
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     }
+
     void restoreSession();
-  }, [storage, apiClient]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const setBaseUrl = (url: string) => {
     setBaseUrlState(url);
@@ -109,13 +127,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
-      // Extract session cookie from headers or JSON
+      // Extract session token from JSON or cookie header
       const setCookie = res.rawHeaders?.get("set-cookie") || "";
       const cookieMatch = setCookie.match(/icellshop_session=([^;]+)/i);
-      const tokenValue = cookieMatch ? cookieMatch[1] : (res.data as any)?.token;
+      const tokenValue = (res.data as any)?.token || (cookieMatch ? cookieMatch[1] : undefined);
 
       if (tokenValue) {
-        const token = new CookieAuthToken("icellshop_session", tokenValue);
+        const token = new BearerAuthToken(tokenValue);
         setCurrentToken(token);
         await storage.setItem("auth_token", tokenValue);
       }

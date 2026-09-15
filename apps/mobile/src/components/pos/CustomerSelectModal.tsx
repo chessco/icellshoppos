@@ -48,7 +48,7 @@ export function CustomerSelectModal({ visible, onClose }: CustomerSelectModalPro
     if (visible) {
       void fetchCustomers();
     }
-  }, [visible, customerService]);
+  }, [visible]);
 
   const fetchCustomers = async () => {
     setIsLoading(true);

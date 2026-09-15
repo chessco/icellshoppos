@@ -71,4 +71,6 @@ export interface BackendSaleCreatedResponse {
   saleNumber?: string;
   total?: number;
   pdfUrl?: string;
+  idempotentReplay?: boolean;
 }
+

@@ -8,6 +8,17 @@ import { isSubscriptionActive } from "@/lib/subscription";
 import { buildSaleReceiptPdf } from "@/lib/sale-receipt-pdf";
 import { normalizeReceiptConfig } from "@/lib/receipt-config";
 import { buildWhatsappNumber, parseWhatsappNumber } from "@/lib/whatsapp";
+import {
+  findSaleByIdempotencyKey,
+  isUniqueConstraintError,
+  buildIdempotentReplayResponse,
+} from "@/lib/sales-idempotency";
+import {
+  InventoryUnavailableError,
+  buildInventoryUnavailableResponse,
+  isInventoryUnavailableError,
+  validateNoDuplicateItemsInPayload,
+} from "@/lib/inventory-concurrency";
 
 type SaleItemInput = {
   inventoryItemId?: string;
@@ -150,17 +161,42 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  let requestedSaleId: string | undefined;
+  let currentOrgId: string | undefined;
+
   try {
     const resolved = await resolveOrganizationId(request);
     const { session, organizationId, permissions } = resolved;
+    currentOrgId = organizationId;
 
     if (!permissions.canCreateSales) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     const body = (await request.json()) as SaleCreatePayload;
+    requestedSaleId = body.saleId?.trim() || undefined;
+
+    // Idempotency check: if saleId already exists for this organization, replay existing sale
+    if (requestedSaleId && organizationId) {
+      const existingSale = await findSaleByIdempotencyKey(organizationId, requestedSaleId);
+      if (existingSale) {
+        return NextResponse.json(buildIdempotentReplayResponse(existingSale));
+      }
+    }
 
     if (!body.items || body.items.length === 0) {
       return NextResponse.json({ error: "No sale items provided" }, { status: 400 });
+    }
+
+    const duplicateValidation = validateNoDuplicateItemsInPayload(body.items);
+    if (!duplicateValidation.valid) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "DUPLICATE_INVENTORY_ITEM",
+          message: duplicateValidation.error,
+        },
+        { status: 400 }
+      );
     }
 
     const customerName = body.customerName?.trim();
@@ -230,6 +266,7 @@ export async function POST(request: NextRequest) {
       capacity: string;
       color: string;
       costPesos: { toString?: () => string } | number | null;
+      status: string;
     }> = await db.inventoryItem.findMany({
       where: {
         organizationId,
@@ -245,6 +282,7 @@ export async function POST(request: NextRequest) {
         capacity: true,
         color: true,
         costPesos: true,
+        status: true,
       },
     });
 
@@ -257,7 +295,26 @@ export async function POST(request: NextRequest) {
       inventoryItems.map((item) => [item.id, item] as const)
     );
 
-    const saleNumber = body.saleId?.trim() || `S-${Date.now()}`;
+    // Pre-flight check: verify every requested item exists in this organization and is Available
+    const unavailableBeforeTx: string[] = [];
+    for (const item of body.items) {
+      const targetId = item.inventoryItemId?.trim();
+      const targetImei = normalizeImei(item.imei);
+      const found = (targetId ? inventoryById.get(targetId) : undefined) ?? (targetImei ? inventoryByImei.get(targetImei) : undefined);
+
+      if (!found || found.status !== "Available") {
+        unavailableBeforeTx.push(targetId || targetImei || "UNKNOWN_ITEM");
+      }
+    }
+
+    if (unavailableBeforeTx.length > 0) {
+      return NextResponse.json(
+        buildInventoryUnavailableResponse(unavailableBeforeTx),
+        { status: 409 }
+      );
+    }
+
+    const saleNumber = requestedSaleId || `S-${Date.now()}`;
     const subtotal = body.items.reduce((sum, item) => sum + parseNumber(item.salePrice), 0);
     let customerId: string | null = null;
 
@@ -304,6 +361,27 @@ export async function POST(request: NextRequest) {
     let inventoryRequestNotification: InventoryRequestNotificationPayload | null = null;
 
     const sale = await db.$transaction(async (transaction) => {
+      // 1. Atomically transition each inventory item from Available to Sold
+      for (const item of body.items) {
+        const targetId = item.inventoryItemId?.trim();
+        const targetImei = normalizeImei(item.imei);
+        const whereClause = targetId
+          ? { organizationId, id: targetId, status: "Available" }
+          : { organizationId, imei: targetImei, status: "Available" };
+
+        const updateResult = await transaction.inventoryItem.updateMany({
+          where: whereClause,
+          data: {
+            status: "Sold",
+          },
+        });
+
+        if (updateResult.count !== 1) {
+          throw new InventoryUnavailableError(targetId || targetImei || "UNKNOWN_ITEM");
+        }
+      }
+
+      // 2. Create Sale record
       const createdSale = await transaction.sale.create({
         data: {
           organizationId,
@@ -447,19 +525,6 @@ export async function POST(request: NextRequest) {
             })),
           };
         }
-      }
-
-      const allInventoryIds = inventoryItems.map((item) => item.id).filter(Boolean);
-      if (allInventoryIds.length > 0) {
-        await transaction.inventoryItem.updateMany({
-          where: {
-            organizationId,
-            id: { in: allInventoryIds },
-          },
-          data: {
-            status: "Sold",
-          },
-        });
       }
 
       if (createdSale.saleNumber.startsWith("PR-")) {
@@ -632,8 +697,28 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({ success: true, saleId: sale.saleNumber });
+    return NextResponse.json({
+      success: true,
+      saleId: sale.saleNumber,
+      total: Number(sale.total),
+    });
   } catch (error) {
+    // Handle inventory unavailability / race condition rollback
+    if (isInventoryUnavailableError(error)) {
+      return NextResponse.json(
+        buildInventoryUnavailableResponse(error.unavailableItemIds),
+        { status: 409 }
+      );
+    }
+
+    // Handle concurrent duplicate submission conflict (P2002 on [organizationId, saleNumber])
+    if (isUniqueConstraintError(error) && requestedSaleId && currentOrgId) {
+      const existingSale = await findSaleByIdempotencyKey(currentOrgId, requestedSaleId);
+      if (existingSale) {
+        return NextResponse.json(buildIdempotentReplayResponse(existingSale));
+      }
+    }
+
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

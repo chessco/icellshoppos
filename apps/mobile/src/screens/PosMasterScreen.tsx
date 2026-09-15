@@ -72,7 +72,7 @@ export function PosMasterScreen({
 
   useEffect(() => {
     void loadInventoryData();
-  }, [inventoryService]);
+  }, []);
 
   const handleScanMatch = (raw: string, type: string, normalized: string) => {
     // Find matching item in inventory by IMEI, Serial, or SKU

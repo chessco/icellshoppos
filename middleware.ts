@@ -126,10 +126,17 @@ export async function middleware(request: NextRequest) {
     return withLocaleCookie(request, NextResponse.next());
   }
 
-  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  let token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  if (!token) {
+    const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.substring(7).trim();
+    }
+  }
+
   if (!token) {
     if (pathname.startsWith("/api/")) {
-      return withLocaleCookie(request, NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
+      return addCorsHeaders(withLocaleCookie(request, NextResponse.json({ error: "Unauthorized" }, { status: 401 })), request);
     }
 
     const loginUrl = new URL("/login", request.url);
@@ -140,7 +147,7 @@ export async function middleware(request: NextRequest) {
   const session = await verifySessionToken(token);
   if (!session) {
     if (pathname.startsWith("/api/")) {
-      return withLocaleCookie(request, NextResponse.json({ error: "Invalid session" }, { status: 401 }));
+      return addCorsHeaders(withLocaleCookie(request, NextResponse.json({ error: "Invalid session" }, { status: 401 })), request);
     }
 
     const loginUrl = new URL("/login", request.url);

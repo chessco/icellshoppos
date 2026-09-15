@@ -29,6 +29,17 @@ const PAYMENT_METHODS = [
   { id: "Other", label: "Other", icon: "🏷️", description: "Trade-in or custom split" },
 ] as const;
 
+function generateUUID(): string {
+  if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 export function CheckoutSheet({ onSuccess, onCancel }: CheckoutSheetProps) {
   const { apiClient, session } = useAuth();
   const {
@@ -39,6 +50,9 @@ export function CheckoutSheet({ onSuccess, onCancel }: CheckoutSheetProps) {
     totalPreview,
     clearCart,
   } = useCart();
+
+  // Logical checkout operation idempotency key (generated once per checkout session, reused on retries)
+  const checkoutIdRef = React.useRef<string>(generateUUID());
 
   const [paymentMethod, setPaymentMethod] = useState<string>("Cash");
   const [customerName, setCustomerName] = useState(selectedCustomer?.name || "");
@@ -86,6 +100,7 @@ export function CheckoutSheet({ onSuccess, onCancel }: CheckoutSheetProps) {
     setErrorMessage(null);
 
     const salePayload = {
+      saleId: checkoutIdRef.current,
       customerName: customerName.trim(),
       customerEmail: customerEmail.trim().toLowerCase() || undefined,
       customerWhatsapp: phoneNorm.normalized,
@@ -110,14 +125,14 @@ export function CheckoutSheet({ onSuccess, onCancel }: CheckoutSheetProps) {
 
       // Print thermal receipt stub asynchronously (separate failure boundary)
       void printerService.printReceipt({
-        saleId: res.data.saleId || res.data.saleNumber || "POS-SALE",
+        saleId: res.data.saleId || res.data.saleNumber || checkoutIdRef.current || "POS-SALE",
         customerName: customerName.trim(),
         items: items.map((i) => ({
           model: i.inventoryItem.model,
           imei: i.inventoryItem.imei || undefined,
           salePrice: i.salePrice,
         })),
-        totalAmount: totalPreview,
+        totalAmount: typeof res.data.total === "number" ? res.data.total : totalPreview,
         paymentMethod,
         createdAt: new Date().toISOString(),
       });

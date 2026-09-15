@@ -45,7 +45,7 @@ export function InventoryScreen() {
 
   useEffect(() => {
     void loadData();
-  }, [inventoryService]);
+  }, []);
 
   const filteredItems = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();

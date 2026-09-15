@@ -2,27 +2,78 @@ import type { ProBuyerApiClient } from "@ireader/api-client";
 import type { ICustomerListItem, CustomerCreatePayload } from "@ireader/contracts";
 
 /**
- * Normalizes a WhatsApp phone number requiring country code and 10-digit number.
- * Example: "+52 55 1234 5678" -> "+525512345678"
+ * Normalizes a WhatsApp phone number for iReader POS.
+ * Authoritative destination formats:
+ *   Mexico:        +52XXXXXXXXXX (10 local digits)
+ *   United States: +1XXXXXXXXXX  (10 local digits)
+ *
+ * Defaults 10-digit un-prefixed input to Mexico (+52).
+ * Rejects unsupported international codes without guessing.
  */
 export function normalizeWhatsappPhone(raw: string): { valid: boolean; normalized: string; error?: string } {
-  const cleaned = String(raw ?? "").trim().replace(/[^\d+]/g, "");
-  if (!cleaned) {
+  const trimmed = String(raw ?? "").trim();
+  if (!trimmed) {
     return { valid: false, normalized: "", error: "Phone number is required." };
   }
 
-  // Must have a plus sign or at least 11 digits (e.g. 5215512345678 or +525512345678)
-  const digitsOnly = cleaned.replace(/\D/g, "");
-  if (digitsOnly.length < 10) {
+  const hasLeadingPlus = trimmed.startsWith("+");
+  let digits = trimmed.replace(/\D/g, "");
+
+  // Handle legacy Mexican mobile prefix (+52 1 XXXXXXXXXX -> 13 digits starting with 521)
+  if (digits.length === 13 && digits.startsWith("521")) {
+    digits = "52" + digits.slice(3);
+  }
+
+  // If explicit leading plus was supplied
+  if (hasLeadingPlus) {
+    if (digits.startsWith("52") && digits.length === 12) {
+      const normalized = `+52${digits.slice(2)}`;
+      return { valid: true, normalized };
+    }
+    if (digits.startsWith("1") && digits.length === 11) {
+      const normalized = `+1${digits.slice(1)}`;
+      return { valid: true, normalized };
+    }
+    // Any other + prefix is either unsupported country or invalid length
     return {
       valid: false,
-      normalized: cleaned,
-      error: "Phone number must include area code and at least 10 digits.",
+      normalized: trimmed,
+      error: "Ingresa un número de WhatsApp válido de México (+52) o Estados Unidos (+1).",
     };
   }
 
-  const withPlus = cleaned.startsWith("+") ? cleaned : `+${cleaned}`;
-  return { valid: true, normalized: withPlus };
+  // No leading plus:
+  // Case A: 10 digits -> Default to Mexico (+52)
+  if (digits.length === 10) {
+    const normalized = `+52${digits}`;
+    return { valid: true, normalized };
+  }
+
+  // Case B: 11 digits starting with 1 -> United States (+1)
+  if (digits.length === 11 && digits.startsWith("1")) {
+    const normalized = `+1${digits.slice(1)}`;
+    return { valid: true, normalized };
+  }
+
+  // Case C: 12 digits starting with 52 -> Mexico (+52)
+  if (digits.length === 12 && digits.startsWith("52")) {
+    const normalized = `+52${digits.slice(2)}`;
+    return { valid: true, normalized };
+  }
+
+  if (digits.length < 10) {
+    return {
+      valid: false,
+      normalized: trimmed,
+      error: "El número debe incluir al menos 10 dígitos.",
+    };
+  }
+
+  return {
+    valid: false,
+    normalized: trimmed,
+    error: "Ingresa un número de WhatsApp válido de México (+52) o Estados Unidos (+1).",
+  };
 }
 
 export class CustomerApplicationService {

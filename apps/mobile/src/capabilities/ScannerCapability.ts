@@ -26,9 +26,10 @@ export class MobileScannerCapability implements IScannerCapability {
   async getStatus(): Promise<ScannerStatus> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { Camera } = require("expo-camera");
-      if (!Camera) return "UNAVAILABLE";
-      const { status } = await Camera.getCameraPermissionsAsync();
+      const cameraModule = require("expo-camera");
+      const fn = cameraModule.getCameraPermissionsAsync || cameraModule.Camera?.getCameraPermissionsAsync;
+      if (!fn) return "UNAVAILABLE";
+      const { status } = await fn();
       return status === "granted" ? "SUPPORTED" : "REQUIRES_PERMISSION";
     } catch {
       return "UNAVAILABLE";
@@ -38,9 +39,10 @@ export class MobileScannerCapability implements IScannerCapability {
   async requestPermission(): Promise<boolean> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { Camera } = require("expo-camera");
-      if (!Camera) return false;
-      const { status } = await Camera.requestCameraPermissionsAsync();
+      const cameraModule = require("expo-camera");
+      const fn = cameraModule.requestCameraPermissionsAsync || cameraModule.Camera?.requestCameraPermissionsAsync;
+      if (!fn) return false;
+      const { status } = await fn();
       return status === "granted";
     } catch {
       return false;
