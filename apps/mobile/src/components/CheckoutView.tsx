@@ -8,12 +8,12 @@ import {
   StyleSheet,
   ScrollView,
 } from "react-native";
-import { useAuth } from "../contexts/AuthContext.js";
-import { useCart } from "../contexts/CartContext.js";
+import { useAuth } from "../contexts/AuthContext";
+import { useCart } from "../contexts/CartContext";
 import { CheckoutApplicationService } from "@ireader/application";
 import type { BackendSaleCreatedResponse } from "@ireader/contracts";
-import { IPAD_THEME } from "../theme/tokens.js";
-import { MobilePrinterService } from "../services/PrinterService.js";
+import { IPAD_THEME } from "../theme/tokens";
+import { MobilePrinterService } from "../services/PrinterService";
 
 interface CheckoutViewProps {
   onSuccess: (result: BackendSaleCreatedResponse) => void;

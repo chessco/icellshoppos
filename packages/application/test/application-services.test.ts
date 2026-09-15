@@ -5,7 +5,7 @@ import {
   IntakeValidationService,
   PricePreviewService,
   CheckoutApplicationService,
-} from "../src/index.js";
+} from "../src/index.ts";
 
 test("DeviceNormalizationService normalizes serials, imei and capacities", () => {
   const normalizer = new DeviceNormalizationService();

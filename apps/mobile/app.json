@@ -4,7 +4,6 @@
     "slug": "ireader-pos",
     "version": "1.0.0",
     "orientation": "default",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
       "backgroundColor": "#090d16"

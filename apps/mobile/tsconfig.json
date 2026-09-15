@@ -8,8 +8,15 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "typeRoots": [
-      "./node_modules/@types"
+      "./node_modules/@types",
+      "../../node_modules/@types"
     ],
+    "types": [
+      "node"
+    ],
+    "allowImportingTsExtensions": true,
+    "ignoreDeprecations": "6.0",
+    "noEmit": true,
     "baseUrl": ".",
     "paths": {
       "react": [
@@ -34,7 +41,9 @@
   },
   "include": [
     "src/**/*",
-    "App.tsx"
+    "App.tsx",
+    "index.ts",
+    "test/**/*"
   ],
   "extends": "expo/tsconfig.base"
 }

@@ -1,1 +1,1 @@
-export * from "./ProBuyerApiClient.js";
+export * from "./ProBuyerApiClient.ts";

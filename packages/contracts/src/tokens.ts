@@ -22,12 +22,19 @@ export interface IAuthToken {
 
 export class CookieAuthToken implements IAuthToken {
   public readonly headerName = "cookie";
+  public readonly cookieName: string;
+  public readonly tokenValue: string;
+  public readonly expiresAt?: Date;
 
   constructor(
-    public readonly cookieName: string,
-    public readonly tokenValue: string,
-    public readonly expiresAt?: Date
-  ) {}
+    cookieName: string,
+    tokenValue: string,
+    expiresAt?: Date
+  ) {
+    this.cookieName = cookieName;
+    this.tokenValue = tokenValue;
+    this.expiresAt = expiresAt;
+  }
 
   get rawValue(): string {
     return this.tokenValue;
@@ -48,11 +55,16 @@ export class CookieAuthToken implements IAuthToken {
 
 export class BearerAuthToken implements IAuthToken {
   public readonly headerName = "authorization";
+  public readonly tokenValue: string;
+  public readonly expiresAt?: Date;
 
   constructor(
-    public readonly tokenValue: string,
-    public readonly expiresAt?: Date
-  ) {}
+    tokenValue: string,
+    expiresAt?: Date
+  ) {
+    this.tokenValue = tokenValue;
+    this.expiresAt = expiresAt;
+  }
 
   get rawValue(): string {
     return this.tokenValue;

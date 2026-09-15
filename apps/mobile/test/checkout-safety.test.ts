@@ -49,8 +49,8 @@ test("CheckoutApplicationService handles valid sale processing and maps response
   assert.equal(result.data?.total, 18500);
 
   // Validate passed payload
-  assert.equal(submittedPayload?.customerName, "Juan Perez");
-  assert.equal(submittedPayload?.items[0].imei, "356982101234567");
+  assert.equal((submittedPayload as any)?.customerName, "Juan Perez");
+  assert.equal((submittedPayload as any)?.items[0].imei, "356982101234567");
 });
 
 test("CheckoutApplicationService normalizes server errors cleanly", async () => {

@@ -69,8 +69,27 @@ const withLocaleCookie = (request: NextRequest, response: NextResponse) => {
   return response;
 };
 
+const addCorsHeaders = (response: NextResponse, request: NextRequest) => {
+  const origin = request.headers.get("origin");
+  if (origin) {
+    response.headers.set("Access-Control-Allow-Origin", origin);
+    response.headers.set("Access-Control-Allow-Credentials", "true");
+    response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
+    response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, Cookie, X-Requested-With, Accept");
+  }
+  return response;
+};
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Handle CORS preflight for API routes
+  if (pathname.startsWith("/api/")) {
+    if (request.method === "OPTIONS") {
+      const response = new NextResponse(null, { status: 204 });
+      return addCorsHeaders(response, request);
+    }
+  }
 
   if (pathname === "/") {
     const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;

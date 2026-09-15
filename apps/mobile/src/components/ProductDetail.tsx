@@ -1,8 +1,8 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import type { IInventoryListItem } from "@ireader/contracts";
-import { useCart } from "../contexts/CartContext.js";
-import { IPAD_THEME } from "../theme/tokens.js";
+import { useCart } from "../contexts/CartContext";
+import { IPAD_THEME } from "../theme/tokens";
 
 interface ProductDetailProps {
   item: IInventoryListItem | null;

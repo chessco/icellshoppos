@@ -2,8 +2,8 @@ import React, { createContext, useContext, useEffect, useState, useMemo } from "
 import { ProBuyerApiClient } from "@ireader/api-client";
 import { AuthApplicationService } from "@ireader/application";
 import type { SessionMeResponse, IAuthToken } from "@ireader/contracts";
-import { CookieAuthToken, BearerAuthToken } from "@ireader/contracts";
-import { MobileSecureStorageAdapter } from "../storage/MobileSecureStorageAdapter.js";
+import { CookieAuthToken } from "@ireader/contracts";
+import { MobileSecureStorageAdapter } from "../storage/MobileSecureStorageAdapter";
 
 interface AuthContextValue {
   session: SessionMeResponse["session"] | null;

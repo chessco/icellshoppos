@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import type { BackendSaleCreatedResponse } from "@ireader/contracts";
-import { IPAD_THEME } from "../theme/tokens.js";
+import { IPAD_THEME } from "../theme/tokens";
 
 interface SaleConfirmationProps {
   sale: BackendSaleCreatedResponse;

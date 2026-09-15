@@ -9,8 +9,8 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { useAuth } from "../contexts/AuthContext.js";
-import { IPAD_THEME } from "../theme/tokens.js";
+import { useAuth } from "../contexts/AuthContext";
+import { IPAD_THEME } from "../theme/tokens";
 
 export function LoginScreen() {
   const { login, isLoading, requires2FA, loginError, baseUrl, setBaseUrl } = useAuth();

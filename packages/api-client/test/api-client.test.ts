@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ProBuyerApiClient } from "../src/index.js";
+import { ProBuyerApiClient } from "../src/index.ts";
 import { BearerAuthToken } from "@ireader/contracts";
 
 test("ProBuyerApiClient attaches token headers to requests", async () => {

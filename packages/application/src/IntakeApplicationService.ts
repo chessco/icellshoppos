@@ -1,6 +1,6 @@
-import { DeviceNormalizationService } from "./DeviceNormalizationService.js";
-import { IntakeValidationService } from "./IntakeValidationService.js";
-import { PricePreviewService } from "./PricePreviewService.js";
+import { DeviceNormalizationService } from "./DeviceNormalizationService.ts";
+import { IntakeValidationService } from "./IntakeValidationService.ts";
+import { PricePreviewService } from "./PricePreviewService.ts";
 import type { IDiscoveredDevice, PricingRuleEntry } from "@ireader/contracts";
 
 /**
