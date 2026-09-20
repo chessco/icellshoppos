@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -13,14 +13,19 @@ import { useAuth } from "../contexts/AuthContext";
 import { IPAD_THEME } from "../theme/tokens";
 
 export function LoginScreen() {
-  const { login, isLoading, requires2FA, setRequires2FA, loginError, baseUrl, setBaseUrl } = useAuth();
+  const { login, isLoading, requires2FA, setRequires2FA, loginError, baseUrl, setBaseUrl, savedPassword } = useAuth();
   const [email, setEmail] = useState("info.cdobregon@gmail.com");
-  const [password, setPassword] = useState("");
-  const savedPasswordRef = useRef("");
+  const [password, setPassword] = useState(savedPassword || "");
   const [code, setCode] = useState("");
   const [showConfig, setShowConfig] = useState(false);
   const [tempUrl, setTempUrl] = useState(baseUrl);
   const [localError, setLocalError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (savedPassword && !password) {
+      setPassword(savedPassword);
+    }
+  }, [savedPassword, password]);
 
   const handleSignIn = async () => {
     setLocalError(null);
@@ -28,7 +33,7 @@ export function LoginScreen() {
       setLocalError("Please enter your email.");
       return;
     }
-    const effectivePassword = password || savedPasswordRef.current;
+    const effectivePassword = password || savedPassword;
     if (!effectivePassword) {
       setLocalError("Please enter your password.");
       return;
@@ -36,9 +41,6 @@ export function LoginScreen() {
     if (requires2FA && (!code.trim() || code.trim().length < 6)) {
       setLocalError("Please enter the 6-digit verification code sent to your email.");
       return;
-    }
-    if (password) {
-      savedPasswordRef.current = password;
     }
     await login(email.trim(), effectivePassword, requires2FA ? code.trim() : undefined);
   };
@@ -84,18 +86,16 @@ export function LoginScreen() {
           <TextInput
             style={[
               styles.input,
-              requires2FA && savedPasswordRef.current ? { backgroundColor: "#f1f5f9", opacity: 0.85 } : null,
+              requires2FA ? { backgroundColor: "#f8fafc", opacity: 0.9 } : null,
             ]}
-            value={password || (requires2FA && savedPasswordRef.current ? "••••••••••••" : "")}
+            value={password || savedPassword}
             onChangeText={(val) => {
               setPassword(val);
-              savedPasswordRef.current = val;
               setLocalError(null);
             }}
             placeholder="••••••••"
             placeholderTextColor={IPAD_THEME.colors.textMuted}
             secureTextEntry
-            editable={!requires2FA || !savedPasswordRef.current}
             accessibilityLabel="Password"
           />
         </View>
@@ -144,7 +144,6 @@ export function LoginScreen() {
               setRequires2FA(false);
               setCode("");
               setPassword("");
-              savedPasswordRef.current = "";
               setLocalError(null);
             }}
           >

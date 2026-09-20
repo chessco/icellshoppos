@@ -10,9 +10,9 @@ import { IPAD_THEME } from "./src/theme/tokens";
 import { PosLayoutProvider } from "./src/contexts/PosLayoutContext";
 
 function AppContent() {
-  const { session, isLoading } = useAuth();
+  const { session, isRestoringSession } = useAuth();
 
-  if (isLoading) {
+  if (isRestoringSession) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={IPAD_THEME.colors.accent} />
