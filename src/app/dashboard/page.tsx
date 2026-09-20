@@ -208,6 +208,7 @@ export default function DashboardPage() {
   const pathname = usePathname();
   const [adminDeniedNotice, setAdminDeniedNotice] = useState(false);
   const [isSuperadmin, setIsSuperadmin] = useState(false);
+  const [viewMode, setViewMode] = useState<"store" | "superadmin">("store");
   const [superadminPayload, setSuperadminPayload] = useState<SuperadminDashboardPayload | null>(null);
   const [payload, setPayload] = useState<DashboardPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -238,20 +239,22 @@ export default function DashboardPage() {
         const superadmin = Boolean(sessionPayload?.session?.isSuperadmin);
         setIsSuperadmin(superadmin);
 
-        const query = !superadmin
-          ? `?from=${encodeURIComponent(dateFrom)}&to=${encodeURIComponent(dateTo)}&customerType=${encodeURIComponent(customerTypeFilter)}`
-          : "";
-        const response = await fetch(superadmin ? "/api/admin/dashboard" : `/api/dashboard${query}`, { cache: "no-store" });
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({}));
-          throw new Error(data.error || "Failed to load dashboard data.");
-        }
-
-        if (superadmin) {
+        if (superadmin && viewMode === "superadmin") {
+          const response = await fetch("/api/admin/dashboard", { cache: "no-store" });
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || "Failed to load superadmin dashboard data.");
+          }
           const data = (await response.json()) as SuperadminDashboardPayload;
           setSuperadminPayload(data);
           setPayload(null);
         } else {
+          const query = `?from=${encodeURIComponent(dateFrom)}&to=${encodeURIComponent(dateTo)}&customerType=${encodeURIComponent(customerTypeFilter)}`;
+          const response = await fetch(`/api/dashboard${query}`, { cache: "no-store" });
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || "Failed to load store dashboard data.");
+          }
           const data = (await response.json()) as DashboardPayload;
           setPayload(data);
           setSuperadminPayload(null);
@@ -264,7 +267,7 @@ export default function DashboardPage() {
     };
 
     loadDashboard();
-  }, [dateFrom, dateTo, customerTypeFilter]);
+  }, [viewMode, dateFrom, dateTo, customerTypeFilter]);
 
   const salesChartMax = useMemo(() => {
     if (!payload?.salesByDate?.length) return 1;
@@ -343,20 +346,77 @@ export default function DashboardPage() {
       <nav className="sticky top-0 z-30 border-b border-[#d6e4ff] bg-[rgba(255,255,255,0.9)] px-6 py-3 backdrop-blur">
         <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 text-sm text-[#4b6292]">
           <CurrentOrgBadge />
-          <span>Organization Dashboard</span>
+          {isSuperadmin ? (
+            <div className="flex items-center gap-1.5 rounded-xl border border-[#cbe0ff] bg-white p-1 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setViewMode("store")}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  viewMode === "store"
+                    ? "bg-[#2563eb] text-white shadow-sm"
+                    : "text-[#29477e] hover:bg-[#eaf2ff]"
+                }`}
+              >
+                🏬 Tienda / Organización
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("superadmin")}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  viewMode === "superadmin"
+                    ? "bg-[#2563eb] text-white shadow-sm"
+                    : "text-[#29477e] hover:bg-[#eaf2ff]"
+                }`}
+              >
+                🌐 Super Admin SaaS
+              </button>
+            </div>
+          ) : (
+            <span>Organization Dashboard</span>
+          )}
         </div>
       </nav>
 
       <div className="grid w-full md:grid-cols-[190px_minmax(0,1fr)]">
         <AppSidebar pathname={pathname} />
         <main className="flex min-w-0 flex-col gap-6 px-6 py-10">
-          <header>
-            <h1 className="text-3xl font-semibold text-[#0f1f3d]">Dashboard</h1>
-            <p className="text-sm text-[#5f7298]">
-              {isSuperadmin
-                ? "Super Admin command center for app growth, billing, subscriptions, and user activity."
-                : "Live organization analytics for inventory, sales, customers, and model performance."}
-            </p>
+          <header className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-semibold text-[#0f1f3d]">
+                {viewMode === "store" ? "Dashboard" : "Super Admin Dashboard"}
+              </h1>
+              <p className="text-sm text-[#5f7298]">
+                {viewMode === "store"
+                  ? "Live organization analytics for inventory, sales, customers, and model performance."
+                  : "Super Admin command center for app growth, billing, subscriptions, and user activity."}
+              </p>
+            </div>
+            {isSuperadmin && (
+              <div className="inline-flex rounded-xl border border-[#cbe0ff] bg-white p-1 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("store")}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                    viewMode === "store"
+                      ? "bg-[#2563eb] text-white shadow-sm"
+                      : "text-[#29477e] hover:bg-[#f0f6ff]"
+                  }`}
+                >
+                  🏬 Tienda
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("superadmin")}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                    viewMode === "superadmin"
+                      ? "bg-[#2563eb] text-white shadow-sm"
+                      : "text-[#29477e] hover:bg-[#f0f6ff]"
+                  }`}
+                >
+                  🌐 Super Admin
+                </button>
+              </div>
+            )}
           </header>
 
           {adminDeniedNotice && (
@@ -373,7 +433,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {!loading && isSuperadmin && superadminPayload && (
+          {!loading && isSuperadmin && viewMode === "superadmin" && superadminPayload && (
             <>
               <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <article className={cardClass}>
@@ -423,91 +483,10 @@ export default function DashboardPage() {
                   </div>
                 </article>
               </section>
-
-              <section className="rounded-2xl border border-[#d6e4ff] bg-white p-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-semibold text-[#0f1f3d]">Customer Deep Dive</h2>
-                    <p className="mt-1 text-xs text-[#5f7298]">Inspect every sold line with cost, sold price, and margin to catch anomalies like zero-cost devices.</p>
-                  </div>
-                  <select
-                    value={selectedCustomerDetail}
-                    onChange={(event) => setSelectedCustomerDetail(event.target.value)}
-                    className="rounded-xl border border-[#c8dafd] bg-white px-3 py-2 text-sm font-medium text-[#0f1f3d] outline-none focus:border-[#2563eb]"
-                  >
-                    <option value="all">All customers</option>
-                    {customerDetailOptions.map((customer) => (
-                      <option key={customer} value={customer}>
-                        {customer}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="mt-4 grid gap-3 md:grid-cols-4">
-                  <div className="rounded-xl border border-[#d6e4ff] bg-[#f7faff] p-3 text-sm text-[#29477e]">
-                    Lines: <span className="font-semibold">{formatInteger(customerDetailSummary.lines)}</span>
-                  </div>
-                  <div className="rounded-xl border border-[#d6e4ff] bg-[#f7faff] p-3 text-sm text-[#29477e]">
-                    Cost: <span className="font-semibold">{formatCurrencyDisplay(customerDetailSummary.totalCost)}</span>
-                  </div>
-                  <div className="rounded-xl border border-[#d6e4ff] bg-[#f7faff] p-3 text-sm text-[#29477e]">
-                    Sold: <span className="font-semibold">{formatCurrencyDisplay(customerDetailSummary.totalSale)}</span>
-                  </div>
-                  <div className={`rounded-xl border p-3 text-sm ${customerDetailSummary.zeroCostCount > 0 ? "border-[#fda4af] bg-[#fff1f2] text-[#9f1239]" : "border-[#d6e4ff] bg-[#f7faff] text-[#29477e]"}`}>
-                    Cost = 0 lines: <span className="font-semibold">{formatInteger(customerDetailSummary.zeroCostCount)}</span>
-                  </div>
-                </div>
-
-                <div className="mt-4 max-h-[420px] overflow-auto rounded-xl border border-[#d6e4ff]">
-                  <table className="min-w-full text-left text-xs">
-                    <thead className="sticky top-0 bg-[#f0f6ff] text-[#29477e]">
-                      <tr>
-                        <th className="px-3 py-2">Sale</th>
-                        <th className="px-3 py-2">Date</th>
-                        <th className="px-3 py-2">Customer</th>
-                        <th className="px-3 py-2">Device</th>
-                        <th className="px-3 py-2">IMEI</th>
-                        <th className="px-3 py-2">Cost</th>
-                        <th className="px-3 py-2">Sold</th>
-                        <th className="px-3 py-2">Margin</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredCustomerLineDetails.map((line, index) => (
-                        <tr
-                          key={`${line.saleNumber}-${line.imei}-${index}`}
-                          className={`border-t ${line.cost === 0 ? "border-[#fecdd3] bg-[#fff1f2]" : "border-[#e4efff]"}`}
-                        >
-                          <td className="px-3 py-2 text-[#0f1f3d]">{line.saleNumber}</td>
-                          <td className="px-3 py-2 text-[#29477e]">{new Date(line.soldAt).toLocaleDateString()}</td>
-                          <td className="px-3 py-2 text-[#29477e]">{line.customer}</td>
-                          <td className="px-3 py-2 text-[#29477e]">{line.model} {line.capacity} {line.color}</td>
-                          <td className="px-3 py-2 text-[#29477e]">{line.imei}</td>
-                          <td className={`px-3 py-2 ${line.cost === 0 ? "font-semibold text-[#be123c]" : "text-[#29477e]"}`}>
-                            {formatCurrencyDisplay(line.cost)}
-                          </td>
-                          <td className="px-3 py-2 text-[#29477e]">{formatCurrencyDisplay(line.salePrice)}</td>
-                          <td className={`px-3 py-2 font-semibold ${line.margin >= 0 ? "text-[#0f1f3d]" : "text-[#be123c]"}`}>
-                            {formatCurrencyDisplay(line.margin)}
-                          </td>
-                        </tr>
-                      ))}
-                      {filteredCustomerLineDetails.length === 0 && (
-                        <tr>
-                          <td className="px-3 py-6 text-center text-[#5f7298]" colSpan={8}>
-                            No line details for this selection.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
             </>
           )}
 
-          {!loading && !isSuperadmin && payload && (
+          {!loading && viewMode === "store" && payload && (
             <>
               <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <article className={cardClass}>
@@ -801,6 +780,87 @@ export default function DashboardPage() {
                     />
                   </div>
                 </article>
+              </section>
+
+              <section className="rounded-2xl border border-[#d6e4ff] bg-white p-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-[#0f1f3d]">Customer Deep Dive</h2>
+                    <p className="mt-1 text-xs text-[#5f7298]">Inspect every sold line with cost, sold price, and margin to catch anomalies like zero-cost devices.</p>
+                  </div>
+                  <select
+                    value={selectedCustomerDetail}
+                    onChange={(event) => setSelectedCustomerDetail(event.target.value)}
+                    className="rounded-xl border border-[#c8dafd] bg-white px-3 py-2 text-sm font-medium text-[#0f1f3d] outline-none focus:border-[#2563eb]"
+                  >
+                    <option value="all">All customers</option>
+                    {customerDetailOptions.map((customer) => (
+                      <option key={customer} value={customer}>
+                        {customer}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-4">
+                  <div className="rounded-xl border border-[#d6e4ff] bg-[#f7faff] p-3 text-sm text-[#29477e]">
+                    Lines: <span className="font-semibold">{formatInteger(customerDetailSummary.lines)}</span>
+                  </div>
+                  <div className="rounded-xl border border-[#d6e4ff] bg-[#f7faff] p-3 text-sm text-[#29477e]">
+                    Cost: <span className="font-semibold">{formatCurrencyDisplay(customerDetailSummary.totalCost)}</span>
+                  </div>
+                  <div className="rounded-xl border border-[#d6e4ff] bg-[#f7faff] p-3 text-sm text-[#29477e]">
+                    Sold: <span className="font-semibold">{formatCurrencyDisplay(customerDetailSummary.totalSale)}</span>
+                  </div>
+                  <div className={`rounded-xl border p-3 text-sm ${customerDetailSummary.zeroCostCount > 0 ? "border-[#fda4af] bg-[#fff1f2] text-[#9f1239]" : "border-[#d6e4ff] bg-[#f7faff] text-[#29477e]"}`}>
+                    Cost = 0 lines: <span className="font-semibold">{formatInteger(customerDetailSummary.zeroCostCount)}</span>
+                  </div>
+                </div>
+
+                <div className="mt-4 max-h-[420px] overflow-auto rounded-xl border border-[#d6e4ff]">
+                  <table className="min-w-full text-left text-xs">
+                    <thead className="sticky top-0 bg-[#f0f6ff] text-[#29477e]">
+                      <tr>
+                        <th className="px-3 py-2">Sale</th>
+                        <th className="px-3 py-2">Date</th>
+                        <th className="px-3 py-2">Customer</th>
+                        <th className="px-3 py-2">Device</th>
+                        <th className="px-3 py-2">IMEI</th>
+                        <th className="px-3 py-2">Cost</th>
+                        <th className="px-3 py-2">Sold</th>
+                        <th className="px-3 py-2">Margin</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredCustomerLineDetails.map((line, index) => (
+                        <tr
+                          key={`${line.saleNumber}-${line.imei}-${index}`}
+                          className={`border-t ${line.cost === 0 ? "border-[#fecdd3] bg-[#fff1f2]" : "border-[#e4efff]"}`}
+                        >
+                          <td className="px-3 py-2 text-[#0f1f3d]">{line.saleNumber}</td>
+                          <td className="px-3 py-2 text-[#29477e]">{new Date(line.soldAt).toLocaleDateString()}</td>
+                          <td className="px-3 py-2 text-[#29477e]">{line.customer}</td>
+                          <td className="px-3 py-2 text-[#29477e]">{line.model} {line.capacity} {line.color}</td>
+                          <td className="px-3 py-2 text-[#29477e]">{line.imei}</td>
+                          <td className={`px-3 py-2 ${line.cost === 0 ? "font-semibold text-[#be123c]" : "text-[#29477e]"}`}>
+                            {formatCurrencyDisplay(line.cost)}
+                          </td>
+                          <td className="px-3 py-2 text-[#29477e]">{formatCurrencyDisplay(line.salePrice)}</td>
+                          <td className={`px-3 py-2 font-semibold ${line.margin >= 0 ? "text-[#0f1f3d]" : "text-[#be123c]"}`}>
+                            {formatCurrencyDisplay(line.margin)}
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredCustomerLineDetails.length === 0 && (
+                        <tr>
+                          <td className="px-3 py-6 text-center text-[#5f7298]" colSpan={8}>
+                            No line details for this selection.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </section>
 
               <section className="rounded-2xl border border-[#d6e4ff] bg-white p-6">
