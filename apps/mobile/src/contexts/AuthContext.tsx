@@ -35,6 +35,7 @@ interface AuthContextValue {
   setBaseUrl: (url: string) => void;
   isLoading: boolean;
   requires2FA: boolean;
+  setRequires2FA: (val: boolean) => void;
   loginError: string | null;
   apiClient: ProBuyerApiClient;
   authService: AuthApplicationService;
@@ -152,12 +153,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         verificationCode: code,
       });
 
-      if (!res.ok) {
-        if ((res.data as any)?.requiresVerification) {
-          setRequires2FA(true);
-          setLoginError(res.error || "Please enter the 6-digit verification code sent to your email.");
-          return false;
+      if ((res.data as any)?.requiresVerification) {
+        setRequires2FA(true);
+        if (!res.ok) {
+          setLoginError(res.error || (res.data as any)?.error || "Please enter the 6-digit verification code.");
+        } else {
+          setLoginError(null);
         }
+        return false;
+      }
+
+      if (!res.ok) {
         setLoginError(res.error || "Login failed");
         return false;
       }
@@ -208,6 +214,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setBaseUrl,
         isLoading,
         requires2FA,
+        setRequires2FA,
         loginError,
         apiClient,
         authService,

@@ -13,7 +13,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { IPAD_THEME } from "../theme/tokens";
 
 export function LoginScreen() {
-  const { login, isLoading, requires2FA, loginError, baseUrl, setBaseUrl } = useAuth();
+  const { login, isLoading, requires2FA, setRequires2FA, loginError, baseUrl, setBaseUrl } = useAuth();
   const [email, setEmail] = useState("info.cdobregon@gmail.com");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -102,6 +102,20 @@ export function LoginScreen() {
             <Text style={styles.submitButtonText}>{requires2FA ? "Verify Code" : "Sign In"}</Text>
           )}
         </TouchableOpacity>
+
+        {requires2FA && (
+          <TouchableOpacity
+            style={{ marginTop: 12, alignItems: "center" }}
+            onPress={() => {
+              setRequires2FA(false);
+              setCode("");
+            }}
+          >
+            <Text style={{ fontSize: 13, color: IPAD_THEME.colors.accent, textDecorationLine: "underline" }}>
+              Back to Sign In
+            </Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity
           style={styles.configToggle}
