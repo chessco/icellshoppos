@@ -23,6 +23,7 @@ RUN npx prisma generate
 ENV NODE_ENV=production
 ENV NEXT_OUTPUT_STANDALONE=true
 ENV NEXT_PUBLIC_APP_URL=https://probuyer.pitayacode.io
+ENV DATABASE_URL="postgresql://dummy:dummy@127.0.0.1:5432/dummy?schema=public"
 
 RUN npm run build
 
