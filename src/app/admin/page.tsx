@@ -20,6 +20,7 @@ export default function AdminDashboard() {
             <li><Link href="/admin/organizations">Organizations</Link></li>
             <li><Link href="/admin/logs">System Logs</Link></li>
             <li><Link href="/admin/feature-flags">Feature Flags</Link></li>
+            <li><Link href="/admin/email-settings">Email Settings</Link></li>
             <li><Link href="/admin/billing">Billing</Link></li>
             <li><Link href="/admin/support">Support Tools</Link></li>
           </ul>

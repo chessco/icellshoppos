@@ -85,97 +85,201 @@ const buildItemsHtml = (items: NotificationItem[]) =>
         .join("")}</ul>`
     : "<p>No items included.</p>";
 
-const getMailConfig = () => {
-  const rawApiKey = process.env.MAILGUN_API_KEY?.trim().replace(/\s+/g, "");
-  const domain = process.env.MAILGUN_DOMAIN?.trim().replace(/\s+/g, "");
-  const region = (process.env.MAILGUN_REGION || "US").toUpperCase();
-  const apiBaseUrl = process.env.MAILGUN_API_BASE_URL || (region === "EU" ? "https://api.eu.mailgun.net" : "https://api.mailgun.net");
-  const configuredFrom = (process.env.MAIL_FROM || `no-reply@${domain ?? "imeicheck2.com"}`).trim().replace(/\s+/g, "");
+import { db } from "@/lib/db";
 
-  if (!rawApiKey || !domain) {
-    throw new Error("Missing MAILGUN_API_KEY or MAILGUN_DOMAIN in environment variables.");
+const getMailSettingsFromDb = async (): Promise<Record<string, string>> => {
+  try {
+    const records = await db.systemSetting.findMany({
+      where: {
+        key: {
+          in: [
+            "MAIL_PROVIDER",
+            "RESEND_API_KEY",
+            "RESEND_FROM_EMAIL",
+            "MAILGUN_API_KEY",
+            "MAILGUN_DOMAIN",
+            "MAILGUN_FROM",
+            "MAILGUN_REGION",
+            "GMAIL_USER",
+            "GMAIL_APP_PASSWORD",
+          ],
+        },
+      },
+    });
+    const map: Record<string, string> = {};
+    for (const record of records) {
+      map[record.key] = record.value;
+    }
+    return map;
+  } catch (err) {
+    console.warn("[MailSettings] Could not query DB settings, using env:", err);
+    return {};
+  }
+};
+
+export type MailProviderType = "resend" | "mailgun" | "gmail";
+
+export type MailConfig = {
+  provider: MailProviderType;
+  resendApiKey: string;
+  resendFromEmail: string;
+  mailgunApiKey: string;
+  mailgunDomain: string;
+  mailgunFrom: string;
+  mailgunRegion: string;
+  gmailUser: string;
+  gmailAppPassword: string;
+};
+
+export const getEffectiveMailConfig = async (): Promise<MailConfig> => {
+  const dbSettings = await getMailSettingsFromDb();
+
+  const provider = (
+    dbSettings["MAIL_PROVIDER"] ||
+    process.env.MAIL_PROVIDER ||
+    "resend"
+  ).toLowerCase() as MailProviderType;
+
+  return {
+    provider: ["resend", "mailgun", "gmail"].includes(provider) ? provider : "resend",
+    resendApiKey: (dbSettings["RESEND_API_KEY"] || process.env.RESEND_API_KEY || "").trim(),
+    resendFromEmail: (
+      dbSettings["RESEND_FROM_EMAIL"] ||
+      process.env.RESEND_FROM_EMAIL ||
+      "onboarding@resend.dev"
+    ).trim(),
+    mailgunApiKey: (dbSettings["MAILGUN_API_KEY"] || process.env.MAILGUN_API_KEY || "")
+      .trim()
+      .replace(/\s+/g, ""),
+    mailgunDomain: (dbSettings["MAILGUN_DOMAIN"] || process.env.MAILGUN_DOMAIN || "")
+      .trim()
+      .replace(/\s+/g, ""),
+    mailgunFrom: (dbSettings["MAILGUN_FROM"] || process.env.MAIL_FROM || "").trim(),
+    mailgunRegion: (
+      dbSettings["MAILGUN_REGION"] ||
+      process.env.MAILGUN_REGION ||
+      "US"
+    ).toUpperCase(),
+    gmailUser: (
+      dbSettings["GMAIL_USER"] ||
+      process.env.GMAIL_USER ||
+      process.env.SMTP_USER ||
+      ""
+    )
+      .trim()
+      .toLowerCase(),
+    gmailAppPassword: (
+      dbSettings["GMAIL_APP_PASSWORD"] ||
+      process.env.GMAIL_APP_PASSWORD ||
+      process.env.SMTP_PASS ||
+      ""
+    ).replace(/\s+/g, ""),
+  };
+};
+
+const sendViaResend = async (
+  config: MailConfig,
+  args: SendEmailArgs
+): Promise<{ ok: boolean; messageId?: string }> => {
+  if (!config.resendApiKey) {
+    throw new Error("Missing RESEND_API_KEY in configuration.");
   }
 
-  const fromDomain = configuredFrom.includes("@") ? configuredFrom.split("@").pop()?.toLowerCase() ?? "" : "";
+  const fromEmail = config.resendFromEmail || "onboarding@resend.dev";
+  const formattedFrom = fromEmail.includes("<")
+    ? fromEmail
+    : `Pro Buyer <${fromEmail}>`;
+
+  const payload: Record<string, unknown> = {
+    from: formattedFrom,
+    to: [args.to],
+    subject: args.subject,
+    text: args.text,
+  };
+
+  if (args.html) {
+    payload.html = args.html;
+  }
+
+  if (args.attachments && args.attachments.length > 0) {
+    payload.attachments = args.attachments.map((att) => ({
+      filename: att.filename,
+      content: (Buffer.isBuffer(att.content)
+        ? att.content
+        : Buffer.from(att.content)
+      ).toString("base64"),
+    }));
+  }
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const responseText = await res.text().catch(() => "");
+  let json: { id?: string; message?: string; error?: unknown } = {};
+  try {
+    json = JSON.parse(responseText);
+  } catch {
+    // raw text
+  }
+
+  if (!res.ok) {
+    throw new Error(
+      `Resend API error (${res.status}): ${json?.message || responseText || "Unknown error"}`
+    );
+  }
+
+  console.log(`\n📧 [Email Sent via Resend] ID: ${json.id} to: ${args.to}`);
+  return { ok: true, messageId: json.id };
+};
+
+const sendViaMailgun = async (
+  config: MailConfig,
+  args: SendEmailArgs
+): Promise<{ ok: boolean; messageId?: string }> => {
+  if (!config.mailgunApiKey || !config.mailgunDomain) {
+    throw new Error("Missing MAILGUN_API_KEY or MAILGUN_DOMAIN in configuration.");
+  }
+
+  const apiBaseUrl =
+    config.mailgunRegion === "EU"
+      ? "https://api.eu.mailgun.net"
+      : "https://api.mailgun.net";
+
+  const domain = config.mailgunDomain;
+  const configuredFrom = config.mailgunFrom || `no-reply@${domain}`;
+  const fromDomain = configuredFrom.includes("@")
+    ? configuredFrom.split("@").pop()?.toLowerCase() ?? ""
+    : "";
   const domainLower = domain.toLowerCase();
-  const fromMatchesDomain =
+  const fromMatches =
     fromDomain === domainLower ||
     fromDomain.endsWith(`.${domainLower}`) ||
     domainLower.endsWith(`.${fromDomain}`);
-
-  const from = fromMatchesDomain ? configuredFrom : `no-reply@${domainLower}`;
-
-  return { apiKey: rawApiKey, domain, from, apiBaseUrl };
-};
-
-const getGmailTransport = () => {
-  const user = (process.env.GMAIL_USER?.trim() || process.env.SMTP_USER?.trim())?.toLowerCase();
-  const pass = (process.env.GMAIL_APP_PASSWORD?.trim() || process.env.SMTP_PASS?.trim())?.replace(/\s+/g, "");
-  if (!user || !pass) return null;
-
-  return nodemailer.createTransport({
-    service: "gmail",
-    auth: { user, pass },
-  });
-};
-
-export async function sendEmail({ to, subject, text, html, attachments }: SendEmailArgs) {
-  // 1. Try Gmail SMTP if configured
-  const gmailTransport = getGmailTransport();
-  if (gmailTransport) {
-    try {
-      const mailOptions: Parameters<typeof gmailTransport.sendMail>[0] = {
-        to,
-        subject,
-        text,
-        html,
-        attachments: attachments?.map((att) => ({
-          filename: att.filename,
-          content: Buffer.from(att.content),
-          contentType: att.contentType,
-        })),
-      };
-      const info = await gmailTransport.sendMail(mailOptions);
-      console.log(`\n📧 [Email Sent via Gmail] MessageId: ${info.messageId} to: ${to}`);
-      return { ok: true, messageId: info.messageId };
-    } catch (gmailError) {
-      console.error("[Gmail Send Error]", gmailError);
-      if (process.env.NODE_ENV !== "production") {
-        console.log(`\n=======================================================\n[LOCAL 2FA CODE / EMAIL FALLBACK]\nTo: ${to}\nSubject: ${subject}\nText:\n${text}\n=======================================================\n`);
-        return { ok: true, fallback: true };
-      }
-      throw gmailError;
-    }
-  }
-
-  // 2. In local development without Mailgun credentials, log code to console so user is never blocked
-  if (process.env.NODE_ENV !== "production" && (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN)) {
-    console.log(`\n=======================================================\n[LOCAL 2FA CODE / EMAIL CONSOLE LOG]\nTo: ${to}\nSubject: ${subject}\nText:\n${text}\n=======================================================\n`);
-    return { ok: true, devMode: true };
-  }
-
-  const { apiKey, domain, from, apiBaseUrl } = getMailConfig();
+  const from = fromMatches ? configuredFrom : `no-reply@${domainLower}`;
 
   const authHeader =
-    "Basic " + Buffer.from(`api:${apiKey}`).toString("base64");
+    "Basic " + Buffer.from(`api:${config.mailgunApiKey}`).toString("base64");
 
   let response: Response;
-
-  if (attachments && attachments.length > 0) {
+  if (args.attachments && args.attachments.length > 0) {
     const formData = new FormData();
     formData.set("from", from);
-    formData.set("to", to);
-    formData.set("subject", subject);
-    formData.set("text", text);
-    if (html) {
-      formData.set("html", html);
-    }
+    formData.set("to", args.to);
+    formData.set("subject", args.subject);
+    formData.set("text", args.text);
+    if (args.html) formData.set("html", args.html);
 
-    for (const attachment of attachments) {
-      const attachmentBytes = Uint8Array.from(attachment.content);
+    for (const attachment of args.attachments) {
+      const bytes = Uint8Array.from(attachment.content);
       formData.append(
         "attachment",
-        new Blob([attachmentBytes], {
+        new Blob([bytes], {
           type: attachment.contentType ?? "application/octet-stream",
         }),
         attachment.filename
@@ -184,20 +288,16 @@ export async function sendEmail({ to, subject, text, html, attachments }: SendEm
 
     response = await fetch(`${apiBaseUrl}/v3/${domain}/messages`, {
       method: "POST",
-      headers: {
-        Authorization: authHeader,
-      },
+      headers: { Authorization: authHeader },
       body: formData,
     });
   } else {
     const body = new URLSearchParams();
     body.set("from", from);
-    body.set("to", to);
-    body.set("subject", subject);
-    body.set("text", text);
-    if (html) {
-      body.set("html", html);
-    }
+    body.set("to", args.to);
+    body.set("subject", args.subject);
+    body.set("text", args.text);
+    if (args.html) body.set("html", args.html);
 
     response = await fetch(`${apiBaseUrl}/v3/${domain}/messages`, {
       method: "POST",
@@ -212,12 +312,133 @@ export async function sendEmail({ to, subject, text, html, attachments }: SendEm
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
     throw new Error(
-      `Mailgun send failed with status ${response.status}${errorText ? `: ${errorText}` : ""}`
+      `Mailgun send failed (${response.status}): ${errorText}`
     );
   }
 
-  return response.json().catch(() => ({ ok: true }));
+  const json = (await response.json().catch(() => ({}))) as { id?: string };
+  console.log(`\n📧 [Email Sent via Mailgun] ID: ${json.id} to: ${args.to}`);
+  return { ok: true, messageId: json.id };
+};
+
+const sendViaGmail = async (
+  config: MailConfig,
+  args: SendEmailArgs
+): Promise<{ ok: boolean; messageId?: string }> => {
+  if (!config.gmailUser || !config.gmailAppPassword) {
+    throw new Error("Missing GMAIL_USER or GMAIL_APP_PASSWORD in configuration.");
+  }
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: config.gmailUser, pass: config.gmailAppPassword },
+  });
+
+  const mailOptions: Parameters<typeof transporter.sendMail>[0] = {
+    to: args.to,
+    subject: args.subject,
+    text: args.text,
+    html: args.html,
+    attachments: args.attachments?.map((att) => ({
+      filename: att.filename,
+      content: Buffer.from(att.content),
+      contentType: att.contentType,
+    })),
+  };
+
+  const info = await transporter.sendMail(mailOptions);
+  console.log(`\n📧 [Email Sent via Gmail] MessageId: ${info.messageId} to: ${args.to}`);
+  return { ok: true, messageId: info.messageId };
+};
+
+export async function sendEmail({
+  to,
+  subject,
+  text,
+  html,
+  attachments,
+}: SendEmailArgs) {
+  const config = await getEffectiveMailConfig();
+
+  try {
+    if (config.provider === "resend") {
+      return await sendViaResend(config, { to, subject, text, html, attachments });
+    }
+    if (config.provider === "mailgun") {
+      return await sendViaMailgun(config, { to, subject, text, html, attachments });
+    }
+    if (config.provider === "gmail") {
+      return await sendViaGmail(config, { to, subject, text, html, attachments });
+    }
+  } catch (providerError) {
+    console.error(`[Email Send Error via ${config.provider}]`, providerError);
+
+    // If superadmin 2FA or local dev, always log to console
+    if (
+      process.env.NODE_ENV !== "production" ||
+      subject.toLowerCase().includes("superadmin") ||
+      subject.toLowerCase().includes("verification")
+    ) {
+      console.log(
+        `\n=======================================================\n[FALLBACK EMAIL LOG — Provider: ${config.provider}]\nTo: ${to}\nSubject: ${subject}\nText:\n${text}\n=======================================================\n`
+      );
+      return { ok: true, fallback: true };
+    }
+
+    throw providerError;
+  }
+
+  // Fallback for dev mode when no provider matches
+  if (process.env.NODE_ENV !== "production") {
+    console.log(
+      `\n=======================================================\n[LOCAL EMAIL CONSOLE LOG]\nTo: ${to}\nSubject: ${subject}\nText:\n${text}\n=======================================================\n`
+    );
+    return { ok: true, devMode: true };
+  }
+
+  throw new Error(`Unsupported or unconfigured mail provider: ${config.provider}`);
 }
+
+export async function sendTestEmail(args: {
+  to: string;
+  provider?: MailProviderType;
+  customConfig?: Partial<MailConfig>;
+}) {
+  const baseConfig = await getEffectiveMailConfig();
+  const provider = args.provider || baseConfig.provider;
+  const config: MailConfig = {
+    ...baseConfig,
+    ...args.customConfig,
+    provider,
+  };
+
+  const subject = `Test Email from Pro Buyer (${provider.toUpperCase()})`;
+  const text = `This is a test email sent from Pro Buyer using the ${provider.toUpperCase()} provider.\n\nSent at: ${new Date().toISOString()}`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; padding: 20px; color: #1f3563; max-width: 600px;">
+      <h2 style="color: #2563eb; margin-bottom: 8px;">Pro Buyer — Test Email</h2>
+      <p>Congratulations! Your email integration is working properly.</p>
+      <div style="background: #f0f6ff; padding: 14px 18px; border-radius: 10px; border-left: 4px solid #2563eb; margin: 16px 0;">
+        <p style="margin: 0; font-size: 14px;"><strong>Active Provider:</strong> ${provider.toUpperCase()}</p>
+        <p style="margin: 4px 0 0; font-size: 13px; color: #5f7298;">Timestamp: ${new Date().toLocaleString()}</p>
+      </div>
+      <p style="font-size: 12px; color: #8fa0c0;">iCellShop / Pro Buyer Ecosystem</p>
+    </div>
+  `;
+
+  if (provider === "resend") {
+    return sendViaResend(config, { to: args.to, subject, text, html });
+  }
+  if (provider === "mailgun") {
+    return sendViaMailgun(config, { to: args.to, subject, text, html });
+  }
+  if (provider === "gmail") {
+    return sendViaGmail(config, { to: args.to, subject, text, html });
+  }
+
+  throw new Error(`Invalid provider: ${provider}`);
+}
+
 
 export async function sendVerificationCodeEmail(email: string, code: string) {
   const subject = "Your verification code - Pro Buyer";

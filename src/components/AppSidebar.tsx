@@ -43,6 +43,7 @@ const superadminNavItems: NavItem[] = [
   { href: "/profile/user-manual", label: "User Manual", labelKey: "sidebar.userManual", match: "exact" },
   { href: "/admin/plans", label: "Plans", labelKey: "sidebar.plans", match: "exact" },
   { href: "/admin/users", label: "Users", labelKey: "sidebar.users", match: "exact" },
+  { href: "/admin/email-settings", label: "Email Settings", labelKey: "sidebar.emailSettings", match: "exact" },
 ];
 
 const isActiveItem = (item: NavItem, pathname: string) => {
