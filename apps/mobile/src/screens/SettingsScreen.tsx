@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
 import { useAuth } from "../contexts/AuthContext";
 import { usePosLayout } from "../contexts/PosLayoutContext";
 import { IPAD_THEME } from "../theme/tokens";
@@ -18,7 +18,12 @@ export function SettingsScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={true}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.content}>
         <Text style={styles.screenTitle}>Settings & Diagnostics</Text>
 
@@ -121,7 +126,7 @@ export function SettingsScreen() {
           />
         </View>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -129,7 +134,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: IPAD_THEME.colors.background,
+  },
+  scrollContent: {
     padding: IPAD_THEME.spacing.xxl,
+    paddingBottom: IPAD_THEME.spacing.xxl * 3,
   },
   content: {
     maxWidth: 680,
