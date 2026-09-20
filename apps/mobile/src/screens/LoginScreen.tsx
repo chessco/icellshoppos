@@ -19,9 +19,22 @@ export function LoginScreen() {
   const [code, setCode] = useState("");
   const [showConfig, setShowConfig] = useState(false);
   const [tempUrl, setTempUrl] = useState(baseUrl);
+  const [localError, setLocalError] = useState<string | null>(null);
 
   const handleSignIn = async () => {
-    if (!email.trim() || !password) return;
+    setLocalError(null);
+    if (!email.trim()) {
+      setLocalError("Please enter your email.");
+      return;
+    }
+    if (!password) {
+      setLocalError("Please enter your password.");
+      return;
+    }
+    if (requires2FA && (!code.trim() || code.trim().length < 6)) {
+      setLocalError("Please enter the 6-digit verification code sent to your email.");
+      return;
+    }
     await login(email.trim(), password, requires2FA ? code.trim() : undefined);
   };
 
@@ -37,49 +50,57 @@ export function LoginScreen() {
         <Text style={styles.title}>Welcome back</Text>
         <Text style={styles.subtitle}>Sign in to your Pro Buyer store account</Text>
 
-        {loginError && (
+        {(localError || loginError) && (
           <View style={styles.errorBanner} accessibilityRole="alert">
-            <Text style={styles.errorText}>{loginError}</Text>
+            <Text style={styles.errorText}>{localError || loginError}</Text>
           </View>
         )}
 
-        {!requires2FA ? (
-          <>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email Address</Text>
-              <TextInput
-                style={styles.input}
-                value={email}
-                onChangeText={setEmail}
-                placeholder="operator@icellshop.com"
-                placeholderTextColor={IPAD_THEME.colors.textMuted}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                accessibilityLabel="Email Address"
-              />
-            </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Email Address</Text>
+          <TextInput
+            style={styles.input}
+            value={email}
+            onChangeText={(val) => {
+              setEmail(val);
+              setLocalError(null);
+              if (requires2FA) setRequires2FA(false);
+            }}
+            placeholder="operator@icellshop.com"
+            placeholderTextColor={IPAD_THEME.colors.textMuted}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            accessibilityLabel="Email Address"
+          />
+        </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Password</Text>
-              <TextInput
-                style={styles.input}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••"
-                placeholderTextColor={IPAD_THEME.colors.textMuted}
-                secureTextEntry
-                accessibilityLabel="Password"
-              />
-            </View>
-          </>
-        ) : (
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Password</Text>
+          <TextInput
+            style={styles.input}
+            value={password}
+            onChangeText={(val) => {
+              setPassword(val);
+              setLocalError(null);
+            }}
+            placeholder="••••••••"
+            placeholderTextColor={IPAD_THEME.colors.textMuted}
+            secureTextEntry
+            accessibilityLabel="Password"
+          />
+        </View>
+
+        {requires2FA && (
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Two-Factor Authentication Code</Text>
             <Text style={styles.hint}>Enter the 6-digit code sent to your email.</Text>
             <TextInput
               style={[styles.input, styles.codeInput]}
               value={code}
-              onChangeText={setCode}
+              onChangeText={(val) => {
+                setCode(val.replace(/\D/g, "").slice(0, 6));
+                setLocalError(null);
+              }}
               placeholder="123456"
               placeholderTextColor={IPAD_THEME.colors.textMuted}
               keyboardType="number-pad"
@@ -94,12 +115,14 @@ export function LoginScreen() {
           onPress={handleSignIn}
           disabled={isLoading}
           accessibilityRole="button"
-          accessibilityLabel={requires2FA ? "Verify Code" : "Sign In"}
+          accessibilityLabel={requires2FA ? "Verify Code & Sign In" : "Sign In"}
         >
           {isLoading ? (
             <ActivityIndicator color="#0f172a" />
           ) : (
-            <Text style={styles.submitButtonText}>{requires2FA ? "Verify Code" : "Sign In"}</Text>
+            <Text style={styles.submitButtonText}>
+              {requires2FA ? "Verify Code & Sign In" : "Sign In"}
+            </Text>
           )}
         </TouchableOpacity>
 
@@ -109,10 +132,11 @@ export function LoginScreen() {
             onPress={() => {
               setRequires2FA(false);
               setCode("");
+              setLocalError(null);
             }}
           >
             <Text style={{ fontSize: 13, color: IPAD_THEME.colors.accent, textDecorationLine: "underline" }}>
-              Back to Sign In
+              Start over
             </Text>
           </TouchableOpacity>
         )}
