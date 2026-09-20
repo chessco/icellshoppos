@@ -21,6 +21,8 @@ interface CatalogGridProps {
   errorMessage: string | null;
   onRefresh: () => void;
   onOpenScanner?: () => void;
+  searchQuery?: string;
+  onSearchQueryChange?: (query: string) => void;
 }
 
 const FILTER_CHIPS = ["All", "Unlocked", "Grade A", "iPhone 15", "iPhone 14", "iPhone 13", "iPad"];
@@ -33,10 +35,15 @@ export function CatalogGrid({
   errorMessage,
   onRefresh,
   onOpenScanner,
+  searchQuery: controlledQuery,
+  onSearchQueryChange,
 }: CatalogGridProps) {
   const { hasItem, addItem, removeItem } = useCart();
-  const [searchQuery, setSearchQuery] = useState("");
+  const [internalQuery, setInternalQuery] = useState("");
   const [activeChip, setActiveChip] = useState("All");
+
+  const searchQuery = controlledQuery !== undefined ? controlledQuery : internalQuery;
+  const setSearchQuery = onSearchQueryChange || setInternalQuery;
 
   const filteredItems = useMemo(() => {
     let result = items;

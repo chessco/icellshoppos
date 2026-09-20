@@ -552,7 +552,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      return createdSale;
+      return Object.assign(createdSale, { items: createdSaleItems });
     }, { timeout: 15000 });
 
     // Log sale creation in AuditLog after transaction commit to keep the interactive transaction short.
@@ -697,10 +697,32 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const responseItems = (sale.items || []).map((item) => ({
+      id: item.id,
+      inventoryItemId: item.inventoryItemId ?? undefined,
+      imei: item.imei,
+      model: item.model,
+      capacity: item.capacity,
+      color: item.color,
+      salePrice: Number(item.salePrice),
+    }));
+
     return NextResponse.json({
       success: true,
       saleId: sale.saleNumber,
+      saleNumber: sale.saleNumber,
       total: Number(sale.total),
+      paymentMethod: sale.paymentMethod ?? undefined,
+      createdAt: sale.createdAt.toISOString(),
+      items: responseItems,
+      customer: customerName
+        ? {
+            id: customerId ?? undefined,
+            name: customerName,
+            email: customerEmail || undefined,
+            whatsapp: normalizedWhatsapp || undefined,
+          }
+        : undefined,
     });
   } catch (error) {
     // Handle inventory unavailability / race condition rollback

@@ -8,14 +8,16 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3007",
+    "dev:ipad": "powershell -ExecutionPolicy Bypass -File ./dev.ps1",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3007",
     "lint": "next lint",
     "db:up": "docker compose -f docker-compose.db.yml up -d",
     "db:down": "docker compose -f docker-compose.db.yml down",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:inventory": "tsx prisma/seed-icellshop.ts",
     "mobile:start": "npm --prefix apps/mobile start",
     "mobile:ios": "npm --prefix apps/mobile run ios",
     "mobile:android": "npm --prefix apps/mobile run android",

@@ -2,12 +2,16 @@ import React, { useState, useEffect, useMemo } from "react";
 import { View, useWindowDimensions, StyleSheet } from "react-native";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
+import { usePosLayout } from "../contexts/PosLayoutContext";
 import { InventoryApplicationService } from "@ireader/application";
 import type { IInventoryListItem, BackendSaleCreatedResponse } from "@ireader/contracts";
+import type { ScanMatchResult } from "../capabilities/ScannerCapability";
 import { IPAD_THEME } from "../theme/tokens";
 import { CatalogGrid } from "../components/pos/CatalogGrid";
 import { ProductDetailPane } from "../components/pos/ProductDetailPane";
 import { CartDrawer } from "../components/pos/CartDrawer";
+import { AppleTouchPosView } from "../components/pos/AppleTouchPosView";
+import { AppleReceiptTicket } from "../components/pos/AppleReceiptTicket";
 import { CustomerSelectModal } from "../components/pos/CustomerSelectModal";
 import { ScannerModal } from "../components/pos/ScannerModal";
 import { CheckoutSheet } from "../components/checkout/CheckoutSheet";
@@ -30,6 +34,7 @@ export function PosMasterScreen({
   const { width } = useWindowDimensions();
   const { apiClient } = useAuth();
   const { items: cartItems } = useCart();
+  const { layoutMode } = usePosLayout();
 
   const [inventory, setInventory] = useState<IInventoryListItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<IInventoryListItem | null>(null);
@@ -42,6 +47,7 @@ export function PosMasterScreen({
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [activeRightTab, setActiveRightTab] = useState<"cart" | "detail">("cart");
+  const [catalogSearch, setCatalogSearch] = useState("");
 
   const inventoryService = useMemo(
     () => new InventoryApplicationService(apiClient),
@@ -74,8 +80,29 @@ export function PosMasterScreen({
     void loadInventoryData();
   }, []);
 
-  const handleScanMatch = (raw: string, type: string, normalized: string) => {
-    // Find matching item in inventory by IMEI, Serial, or SKU
+  const handleScanMatch = (
+    raw: string,
+    type: string,
+    normalized: string
+  ): ScanMatchResult<IInventoryListItem> => {
+    // 1. Network / error boundary check
+    if (errorMessage) {
+      return {
+        matched: false,
+        reason: "ERROR",
+        errorMessage,
+      };
+    }
+
+    // 2. Loading boundary check
+    if (isLoading) {
+      return {
+        matched: false,
+        reason: "LOADING",
+      };
+    }
+
+    // 3. Find matching item in available inventory by IMEI, Serial, or SKU
     const match = inventory.find((item) => {
       const imei = item.imei || "";
       const serial = item.serialNumber?.toUpperCase() || "";
@@ -91,25 +118,28 @@ export function PosMasterScreen({
     if (match) {
       setSelectedItem(match);
       setActiveRightTab("detail");
+      return { matched: true, item: match };
     }
+
+    return { matched: false, reason: "NOT_FOUND" };
   };
 
-  // If in checkout mode
+  // Full-Screen Checkout Sheet Mode
   if (viewMode === "checkout") {
     return (
       <CheckoutSheet
-        onSuccess={(sale) => {
-          setLastSaleResult(sale);
+        onBackToPos={() => setViewMode("pos")}
+        onSaleSuccess={(saleResult) => {
+          setLastSaleResult(saleResult);
           setViewMode("confirmed");
           void loadInventoryData();
         }}
-        onCancel={() => setViewMode("pos")}
       />
     );
   }
 
-  // If sale confirmed
-  if (viewMode === "confirmed" && lastSaleResult) {
+  // Sale Confirmed View Mode
+  if (viewMode === "confirmed") {
     return (
       <SaleConfirmation
         sale={lastSaleResult}
@@ -125,38 +155,65 @@ export function PosMasterScreen({
 
   return (
     <View style={styles.container}>
-      {/* Split Layout: Left Catalog (58%), Right Cart/Detail (42%) */}
-      <View style={[styles.layout, !isWide && styles.layoutStacked]}>
-        {/* Left Column: Product Catalog & Search */}
-        <View style={styles.catalogColumn}>
-          <CatalogGrid
-            items={inventory}
-            selectedItem={selectedItem}
-            onSelectItem={(it) => {
-              setSelectedItem(it);
-              setActiveRightTab("detail");
-            }}
-            isLoading={isLoading}
-            errorMessage={errorMessage}
-            onRefresh={loadInventoryData}
-            onOpenScanner={() => setIsScannerOpen(true)}
-          />
-        </View>
+      {layoutMode === "apple_touch" ? (
+        /* ─────────────── APPLE TOUCH POS MODE ─────────────── */
+        <View style={[styles.layout, !isWide && styles.layoutStacked]}>
+          {/* Left Column: Tactile Product Grid (60%) */}
+          <View style={styles.appleCatalogColumn}>
+            <AppleTouchPosView
+              items={inventory}
+              isLoading={isLoading}
+              errorMessage={errorMessage}
+              onRefresh={loadInventoryData}
+              onOpenScanner={() => setIsScannerOpen(true)}
+            />
+          </View>
 
-        {/* Right Column: Cart / Product Detail Drawer */}
-        <View style={styles.rightColumn}>
-          {activeRightTab === "detail" && selectedItem ? (
-            <View style={styles.detailWrapper}>
-              <ProductDetailPane item={selectedItem} />
-            </View>
-          ) : (
-            <CartDrawer
+          {/* Right Column: Apple Live Receipt Ticket (40%) */}
+          <View style={styles.appleTicketColumn}>
+            <AppleReceiptTicket
               onProceedCheckout={() => setViewMode("checkout")}
               onOpenCustomerSelect={() => setIsCustomerModalOpen(true)}
+              onOpenScanner={() => setIsScannerOpen(true)}
             />
-          )}
+          </View>
         </View>
-      </View>
+      ) : (
+        /* ─────────────── CLASSIC WEB CATALOG MODE ─────────────── */
+        <View style={[styles.layout, !isWide && styles.layoutStacked]}>
+          {/* Left Column: Product Catalog & Search */}
+          <View style={styles.catalogColumn}>
+            <CatalogGrid
+              items={inventory}
+              selectedItem={selectedItem}
+              onSelectItem={(it) => {
+                setSelectedItem(it);
+                setActiveRightTab("detail");
+              }}
+              isLoading={isLoading}
+              errorMessage={errorMessage}
+              onRefresh={loadInventoryData}
+              onOpenScanner={() => setIsScannerOpen(true)}
+              searchQuery={catalogSearch}
+              onSearchQueryChange={setCatalogSearch}
+            />
+          </View>
+
+          {/* Right Column: Cart / Product Detail Drawer */}
+          <View style={styles.rightColumn}>
+            {activeRightTab === "detail" && selectedItem ? (
+              <View style={styles.detailWrapper}>
+                <ProductDetailPane item={selectedItem} />
+              </View>
+            ) : (
+              <CartDrawer
+                onProceedCheckout={() => setViewMode("checkout")}
+                onOpenCustomerSelect={() => setIsCustomerModalOpen(true)}
+              />
+            )}
+          </View>
+        </View>
+      )}
 
       {/* Customer Assign Modal */}
       <CustomerSelectModal
@@ -169,6 +226,10 @@ export function PosMasterScreen({
         visible={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
         onScanResult={handleScanMatch}
+        onSearchManually={(query) => {
+          setCatalogSearch(query);
+          setIsScannerOpen(false);
+        }}
       />
     </View>
   );
@@ -186,14 +247,22 @@ const styles = StyleSheet.create({
   layoutStacked: {
     flexDirection: "column",
   },
+  // Classic layout dimensions
   catalogColumn: {
-    flex: 1.25,
+    flex: 58,
     borderRightWidth: 1,
     borderRightColor: IPAD_THEME.colors.borderSubtle,
   },
   rightColumn: {
-    flex: 1,
-    padding: IPAD_THEME.spacing.lg,
+    flex: 42,
+    backgroundColor: IPAD_THEME.colors.surfacePrimary,
+  },
+  // Apple Touch layout dimensions
+  appleCatalogColumn: {
+    flex: 62,
+  },
+  appleTicketColumn: {
+    flex: 38,
   },
   detailWrapper: {
     flex: 1,

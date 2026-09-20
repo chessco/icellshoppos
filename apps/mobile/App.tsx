@@ -7,6 +7,8 @@ import { LoginScreen } from "./src/screens/LoginScreen";
 import { MainAppShell } from "./src/screens/MainAppShell";
 import { IPAD_THEME } from "./src/theme/tokens";
 
+import { PosLayoutProvider } from "./src/contexts/PosLayoutContext";
+
 function AppContent() {
   const { session, isLoading } = useAuth();
 
@@ -24,7 +26,9 @@ function AppContent() {
 
   return (
     <CartProvider>
-      <MainAppShell />
+      <PosLayoutProvider>
+        <MainAppShell />
+      </PosLayoutProvider>
     </CartProvider>
   );
 }

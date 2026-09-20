@@ -15,10 +15,13 @@ import { IPAD_THEME } from "../../theme/tokens";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import { MobilePrinterService } from "../../services/PrinterService";
+import { formatCurrency } from "../../utils/formatters";
 
 interface CheckoutSheetProps {
-  onSuccess: (result: BackendSaleCreatedResponse) => void;
-  onCancel: () => void;
+  onSuccess?: (result: BackendSaleCreatedResponse) => void;
+  onSaleSuccess?: (result: BackendSaleCreatedResponse) => void;
+  onCancel?: () => void;
+  onBackToPos?: () => void;
 }
 
 const PAYMENT_METHODS = [
@@ -40,7 +43,14 @@ function generateUUID(): string {
   });
 }
 
-export function CheckoutSheet({ onSuccess, onCancel }: CheckoutSheetProps) {
+export function CheckoutSheet({
+  onSuccess,
+  onSaleSuccess,
+  onCancel,
+  onBackToPos,
+}: CheckoutSheetProps) {
+  const triggerSuccess = onSuccess || onSaleSuccess || (() => {});
+  const triggerCancel = onCancel || onBackToPos || (() => {});
   const { apiClient, session } = useAuth();
   const {
     items,
@@ -126,19 +136,25 @@ export function CheckoutSheet({ onSuccess, onCancel }: CheckoutSheetProps) {
       // Print thermal receipt stub asynchronously (separate failure boundary)
       void printerService.printReceipt({
         saleId: res.data.saleId || res.data.saleNumber || checkoutIdRef.current || "POS-SALE",
-        customerName: customerName.trim(),
-        items: items.map((i) => ({
-          model: i.inventoryItem.model,
-          imei: i.inventoryItem.imei || undefined,
-          salePrice: i.salePrice,
-        })),
+        customerName: res.data.customer?.name || customerName.trim(),
+        items: res.data.items?.length
+          ? res.data.items.map((i) => ({
+              model: i.model || "Device",
+              imei: i.imei,
+              salePrice: i.salePrice,
+            }))
+          : items.map((i) => ({
+              model: i.inventoryItem.model,
+              imei: i.inventoryItem.imei || undefined,
+              salePrice: i.salePrice,
+            })),
         totalAmount: typeof res.data.total === "number" ? res.data.total : totalPreview,
-        paymentMethod,
-        createdAt: new Date().toISOString(),
+        paymentMethod: res.data.paymentMethod || paymentMethod,
+        createdAt: res.data.createdAt || new Date().toISOString(),
       });
 
       clearCart();
-      onSuccess(res.data);
+      triggerSuccess(res.data);
     } catch (err: unknown) {
       setErrorMessage(
         err instanceof Error
@@ -161,7 +177,7 @@ export function CheckoutSheet({ onSuccess, onCancel }: CheckoutSheetProps) {
           </Text>
         </View>
         <TouchableOpacity
-          onPress={onCancel}
+          onPress={triggerCancel}
           style={styles.cancelBtn}
           accessibilityRole="button"
           accessibilityLabel="Cancel checkout"
@@ -190,7 +206,7 @@ export function CheckoutSheet({ onSuccess, onCancel }: CheckoutSheetProps) {
                     IMEI: {it.inventoryItem.imei || it.inventoryItem.serialNumber || "—"}
                   </Text>
                 </View>
-                <Text style={styles.itemPrice}>${it.salePrice.toFixed(2)}</Text>
+                <Text style={styles.itemPrice}>{formatCurrency(it.salePrice)}</Text>
               </View>
             ))}
 
@@ -198,19 +214,19 @@ export function CheckoutSheet({ onSuccess, onCancel }: CheckoutSheetProps) {
 
             <View style={styles.calcRow}>
               <Text style={styles.calcLabel}>Subtotal</Text>
-              <Text style={styles.calcVal}>${subtotal.toFixed(2)}</Text>
+              <Text style={styles.calcVal}>{formatCurrency(subtotal)}</Text>
             </View>
 
             {discountAmount > 0 && (
               <View style={styles.calcRow}>
                 <Text style={styles.discountLabel}>Discount</Text>
-                <Text style={styles.discountVal}>-${discountAmount.toFixed(2)}</Text>
+                <Text style={styles.discountVal}>-{formatCurrency(discountAmount)}</Text>
               </View>
             )}
 
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Total Due</Text>
-              <Text style={styles.totalVal}>${totalPreview.toFixed(2)}</Text>
+              <Text style={styles.totalVal}>{formatCurrency(totalPreview)}</Text>
             </View>
           </View>
         </View>
@@ -305,13 +321,13 @@ export function CheckoutSheet({ onSuccess, onCancel }: CheckoutSheetProps) {
 
           {/* Complete Button */}
           <Button
-            title={`Confirm & Charge $${totalPreview.toFixed(2)}`}
+            title={`Confirm & Charge ${formatCurrency(totalPreview)}`}
             variant="success"
             size="lg"
             loading={isSubmitting}
             onPress={handleCompleteSale}
             style={styles.completeBtn}
-            accessibilityLabel={`Confirm and charge $${totalPreview.toFixed(2)}`}
+            accessibilityLabel={`Confirm and charge ${formatCurrency(totalPreview)}`}
           />
         </View>
       </View>

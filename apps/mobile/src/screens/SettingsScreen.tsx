@@ -1,11 +1,13 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, StyleSheet } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
 import { useAuth } from "../contexts/AuthContext";
+import { usePosLayout } from "../contexts/PosLayoutContext";
 import { IPAD_THEME } from "../theme/tokens";
 import { Button } from "../components/ui/Button";
 
 export function SettingsScreen() {
   const { session, baseUrl, setBaseUrl, logout } = useAuth();
+  const { layoutMode, setLayoutMode } = usePosLayout();
   const [urlInput, setUrlInput] = useState(baseUrl);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -20,6 +22,54 @@ export function SettingsScreen() {
       <View style={styles.content}>
         <Text style={styles.screenTitle}>Settings & Diagnostics</Text>
 
+        {/* POS Mode Selection */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Modo de Interfaz Punto de Venta (POS)</Text>
+          <Text style={styles.sectionSub}>
+            Selecciona la experiencia visual predeterminada para el operador. También puedes alternar en cualquier momento desde la barra superior.
+          </Text>
+
+          <View style={styles.layoutModeCards}>
+            <TouchableOpacity
+              style={[styles.modeCard, layoutMode === "apple_touch" && styles.modeCardActive]}
+              onPress={() => setLayoutMode("apple_touch")}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel="Activar Modo Táctil Apple"
+            >
+              <Text style={styles.modeCardIcon}>📱</Text>
+              <View style={styles.modeCardContent}>
+                <Text style={[styles.modeCardTitle, layoutMode === "apple_touch" && styles.modeCardTitleActive]}>
+                  Modo Táctil Apple (Recomendado)
+                </Text>
+                <Text style={styles.modeCardDesc}>
+                  Tarjetas táctiles de producto, categorías superiores (iPhone, iPad, Mac...) y ticket de cobro interactivo lateral.
+                </Text>
+              </View>
+              {layoutMode === "apple_touch" && <Text style={styles.modeCheck}>✓ Activo</Text>}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.modeCard, layoutMode === "classic" && styles.modeCardActive]}
+              onPress={() => setLayoutMode("classic")}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel="Activar Modo Catálogo Web Clásico"
+            >
+              <Text style={styles.modeCardIcon}>🖥️</Text>
+              <View style={styles.modeCardContent}>
+                <Text style={[styles.modeCardTitle, layoutMode === "classic" && styles.modeCardTitleActive]}>
+                  Modo Catálogo Web (Clásico)
+                </Text>
+                <Text style={styles.modeCardDesc}>
+                  Parrilla tradicional con buscador detallado, filtros por chips y panel lateral deslizable de detalle.
+                </Text>
+              </View>
+              {layoutMode === "classic" && <Text style={styles.modeCheck}>✓ Activo</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Server Config */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Pro Buyer API Connection</Text>
@@ -33,7 +83,7 @@ export function SettingsScreen() {
               style={styles.input}
               value={urlInput}
               onChangeText={setUrlInput}
-              placeholder="http://127.0.0.1:3000"
+              placeholder="http://127.0.0.1:3007"
               placeholderTextColor={IPAD_THEME.colors.textMuted}
               autoCapitalize="none"
               autoCorrect={false}
@@ -150,5 +200,48 @@ const styles = StyleSheet.create({
   },
   logoutBtn: {
     marginTop: IPAD_THEME.spacing.lg,
+  },
+  layoutModeCards: {
+    gap: IPAD_THEME.spacing.md,
+  },
+  modeCard: {
+    backgroundColor: IPAD_THEME.colors.surfaceSecondary,
+    borderRadius: IPAD_THEME.radius.lg,
+    padding: IPAD_THEME.spacing.lg,
+    borderWidth: 1.5,
+    borderColor: IPAD_THEME.colors.borderSubtle,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  modeCardActive: {
+    borderColor: IPAD_THEME.colors.accent,
+    backgroundColor: "rgba(56, 189, 248, 0.08)",
+  },
+  modeCardIcon: {
+    fontSize: 28,
+    marginRight: IPAD_THEME.spacing.md,
+  },
+  modeCardContent: {
+    flex: 1,
+  },
+  modeCardTitle: {
+    color: IPAD_THEME.colors.textPrimary,
+    fontSize: 15,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  modeCardTitleActive: {
+    color: IPAD_THEME.colors.accent,
+  },
+  modeCardDesc: {
+    color: IPAD_THEME.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  modeCheck: {
+    color: IPAD_THEME.colors.accent,
+    fontSize: 13,
+    fontWeight: "800",
+    marginLeft: IPAD_THEME.spacing.md,
   },
 });

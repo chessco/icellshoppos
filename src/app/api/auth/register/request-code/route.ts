@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { sendVerificationCodeEmail } from "@/lib/email";
 import { hashInviteToken } from "@/lib/org-invites";
 import { normalizeWhatsappFromPayload } from "@/lib/whatsapp";
+import { checkEmailCodeRateLimit } from "@/lib/code-rate-limit";
 
 const inviteDelegate = db as unknown as {
   organizationInvite: {
@@ -88,6 +89,19 @@ export async function POST(request: NextRequest) {
     const existingUser = await db.user.findUnique({ where: { email } });
     if (existingUser) {
       return NextResponse.json({ error: "Email already registered." }, { status: 400 });
+    }
+
+    const rateLimit = await checkEmailCodeRateLimit(email, REGISTER_VERIFICATION_PURPOSE);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: rateLimit.error, retryAfterSeconds: rateLimit.retryAfterSeconds },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(rateLimit.retryAfterSeconds),
+          },
+        }
+      );
     }
 
     const code = generateCode();

@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { NextRequest, NextResponse } from "next/server.js";
+import { db } from "../../../../lib/db.ts";
 
 const IMEICHECK2_PROVIDER = "imeicheck2";
 const IMEICHECK2_REVOKE_EVENT = "imeicheck2.api_key.revoked";
@@ -29,7 +29,11 @@ export async function handleImeiCheckUnlinkWebhook(request: NextRequest) {
       process.env.PROBUYER_WEBHOOK_SECRET?.trim();
     const providedSecret = request.headers.get("x-probuyer-secret")?.trim();
 
-    if (expectedSecret && providedSecret !== expectedSecret) {
+    if (!expectedSecret) {
+      return NextResponse.json({ error: "Webhook endpoint not configured" }, { status: 503 });
+    }
+
+    if (!providedSecret || providedSecret !== expectedSecret) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

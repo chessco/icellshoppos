@@ -19,6 +19,14 @@ test("CheckoutApplicationService handles valid sale processing and maps response
           saleId: "SALE-2026-001",
           saleNumber: "PB-9821",
           total: 18500,
+          items: [
+            {
+              inventoryItemId: "inv-101",
+              imei: "356982101234567",
+              model: "iPhone 13 128GB",
+              salePrice: 18500,
+            },
+          ],
         } as BackendSaleCreatedResponse,
       };
     },
@@ -47,6 +55,8 @@ test("CheckoutApplicationService handles valid sale processing and maps response
   assert.equal(result.data?.saleId, "SALE-2026-001");
   assert.equal(result.data?.saleNumber, "PB-9821");
   assert.equal(result.data?.total, 18500);
+  assert.equal(result.data?.items.length, 1);
+  assert.equal(result.data?.items[0].imei, "356982101234567");
 
   // Validate passed payload
   assert.equal((submittedPayload as any)?.customerName, "Juan Perez");
@@ -108,6 +118,14 @@ test("CheckoutApplicationService preserves saleId across retries and handles ide
           saleId: fixedIdempotencyKey,
           saleNumber: fixedIdempotencyKey,
           total: 15000,
+          items: [
+            {
+              inventoryItemId: "inv-202",
+              imei: "356982101234567",
+              model: "iPhone 12",
+              salePrice: 15000,
+            },
+          ],
           idempotentReplay: true,
         } as BackendSaleCreatedResponse,
       };
@@ -135,10 +153,48 @@ test("CheckoutApplicationService preserves saleId across retries and handles ide
   assert.equal(res2.data?.idempotentReplay, true);
   assert.equal(res2.data?.saleId, fixedIdempotencyKey);
   assert.equal(res2.data?.total, 15000);
+  assert.equal(res2.data?.items.length, 1);
 
   // Assert both attempts used the exact same saleId
   assert.equal(capturedSaleIds.length, 2);
   assert.equal(capturedSaleIds[0], fixedIdempotencyKey);
   assert.equal(capturedSaleIds[1], fixedIdempotencyKey);
+});
+
+test("TEST 8: Mobile TypeScript accepts the enriched response and confirms all fields", () => {
+  const enrichedResponse: BackendSaleCreatedResponse = {
+    success: true,
+    saleId: "S-2026-TEST-8",
+    saleNumber: "S-2026-TEST-8",
+    total: 21500,
+    paymentMethod: "Card",
+    customer: {
+      id: "cust-1",
+      name: "Carlos Sanchez",
+      email: "carlos@example.com",
+      whatsapp: "+525598765432",
+    },
+    createdAt: "2026-09-15T21:00:00.000Z",
+    items: [
+      {
+        id: "sale-item-1",
+        inventoryItemId: "inv-901",
+        imei: "354928110293847",
+        model: "iPhone 15 Pro",
+        capacity: "256GB",
+        color: "Natural Titanium",
+        salePrice: 21500,
+      },
+    ],
+    idempotentReplay: false,
+  };
+
+  assert.equal(enrichedResponse.success, true);
+  assert.equal(enrichedResponse.saleId, "S-2026-TEST-8");
+  assert.equal(enrichedResponse.total, 21500);
+  assert.equal(enrichedResponse.items.length, 1);
+  assert.equal(enrichedResponse.items[0].model, "iPhone 15 Pro");
+  assert.equal(enrichedResponse.items[0].salePrice, 21500);
+  assert.equal(enrichedResponse.customer?.name, "Carlos Sanchez");
 });
 

@@ -5,18 +5,27 @@ import { IPAD_THEME } from "../../theme/tokens";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { useCart } from "../../contexts/CartContext";
+import { formatCurrency } from "../../utils/formatters";
 
 interface ProductDetailPaneProps {
   item: IInventoryListItem | null;
+  onAddToCart: (item: IInventoryListItem) => void;
+  onRemoveFromCart: (itemId: string) => void;
+  onOpenScanner?: () => void;
 }
 
-export function ProductDetailPane({ item }: ProductDetailPaneProps) {
-  const { addItem, removeItem, hasItem } = useCart();
+export function ProductDetailPane({
+  item,
+  onAddToCart,
+  onRemoveFromCart,
+  onOpenScanner,
+}: ProductDetailPaneProps) {
+  const { hasItem } = useCart();
 
   if (!item) {
     return (
-      <View style={styles.emptyContainer}>
-        <Text style={styles.emptyIcon}>🔍</Text>
+      <View style={[styles.container, styles.emptyContainer]}>
+        <Text style={styles.emptyIcon}>📱</Text>
         <Text style={styles.emptyTitle}>No Device Selected</Text>
         <Text style={styles.emptySubtitle}>
           Select an item from the catalog or scan an IMEI/barcode to inspect full device details
@@ -26,8 +35,7 @@ export function ProductDetailPane({ item }: ProductDetailPaneProps) {
   }
 
   const inCart = hasItem(item.id);
-  const formattedPrice =
-    typeof item.price === "number" ? `$${item.price.toFixed(2)}` : `$${item.price}`;
+  const formattedPrice = formatCurrency(item.price);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>

@@ -65,11 +65,32 @@ export interface BackendSaleCreatePayload {
   items: BackendSaleItemInput[];
 }
 
+export interface SaleCustomerInfo {
+  id?: string;
+  name: string;
+  email?: string;
+  whatsapp?: string;
+}
+
+export interface SaleResponseItem {
+  id?: string;
+  inventoryItemId?: string;
+  imei?: string;
+  model?: string;
+  capacity?: string;
+  color?: string;
+  salePrice: number;
+}
+
 export interface BackendSaleCreatedResponse {
-  success?: boolean;
-  saleId?: string;
+  success: boolean;
+  saleId: string;
   saleNumber?: string;
-  total?: number;
+  total: number;
+  items: SaleResponseItem[];
+  paymentMethod?: string;
+  customer?: SaleCustomerInfo;
+  createdAt?: string;
   pdfUrl?: string;
   idempotentReplay?: boolean;
 }

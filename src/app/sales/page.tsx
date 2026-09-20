@@ -941,8 +941,8 @@ export default function SalesPage() {
                   </thead>
                   <tbody>
                     {availableRows.map((item) => (
-                      <tr key={item.imei} className="border-b border-[#f1e4d6]">
-                        <td className="px-2 py-2">{item.imei}</td>
+                      <tr key={item.id} className="border-b border-[#f1e4d6]">
+                        <td className="px-2 py-2">{getItemIdentifier(item)}</td>
                         <td className="px-2 py-2">{item.model} {item.capacity} {item.color}</td>
                         <td className="px-2 py-2">{money(getTierPrice(item, selectedTier))}</td>
                         <td className="px-2 py-2">

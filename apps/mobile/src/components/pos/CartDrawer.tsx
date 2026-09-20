@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from "react-nati
 import { IPAD_THEME } from "../../theme/tokens";
 import { Button } from "../ui/Button";
 import { useCart } from "../../contexts/CartContext";
+import { formatCurrency } from "../../utils/formatters";
 
 interface CartDrawerProps {
   onProceedCheckout: () => void;
@@ -90,7 +91,7 @@ export function CartDrawer({
                 </Text>
               </View>
               <View style={styles.itemActions}>
-                <Text style={styles.itemPrice}>${item.salePrice.toFixed(2)}</Text>
+                <Text style={styles.itemPrice}>{formatCurrency(item.salePrice)}</Text>
                 <TouchableOpacity
                   style={styles.removeBtn}
                   onPress={() => removeItem(item.inventoryItem.id)}
@@ -109,13 +110,13 @@ export function CartDrawer({
       <View style={styles.footer}>
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>Subtotal</Text>
-          <Text style={styles.summaryVal}>${subtotal.toFixed(2)}</Text>
+          <Text style={styles.summaryVal}>{formatCurrency(subtotal)}</Text>
         </View>
 
         {discountAmount > 0 && (
           <View style={styles.summaryRow}>
             <Text style={styles.discountLabel}>Discount Applied</Text>
-            <Text style={styles.discountVal}>-${discountAmount.toFixed(2)}</Text>
+            <Text style={styles.discountVal}>-{formatCurrency(discountAmount)}</Text>
           </View>
         )}
 
@@ -123,16 +124,17 @@ export function CartDrawer({
 
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total Due</Text>
-          <Text style={styles.totalVal}>${totalPreview.toFixed(2)}</Text>
+          <Text style={styles.totalVal}>{formatCurrency(totalPreview)}</Text>
         </View>
 
         <Button
-          title={hasItems ? `Checkout • $${totalPreview.toFixed(2)}` : "Select Items to Checkout"}
+          title={hasItems ? `Checkout • ${formatCurrency(totalPreview)}` : "Select Items to Checkout"}
           variant="primary"
           size="lg"
           disabled={!hasItems}
           onPress={onProceedCheckout}
           style={styles.checkoutBtn}
+
           accessibilityLabel="Proceed to checkout"
         />
       </View>

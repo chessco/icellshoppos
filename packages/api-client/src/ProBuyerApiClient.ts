@@ -46,6 +46,7 @@ export class ProBuyerApiClient {
     if (!headers.has("content-type") && options.body && typeof options.body === "string") {
       headers.set("content-type", "application/json");
     }
+    headers.set("ngrok-skip-browser-warning", "1");
 
     if (this.getToken) {
       const token = await this.getToken();

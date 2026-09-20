@@ -3,6 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { IPAD_THEME } from "../../theme/tokens";
 import { ConnectivityBadge, type ConnectivityState } from "../ui/ConnectivityBadge";
 import { useCart } from "../../contexts/CartContext";
+import { usePosLayout } from "../../contexts/PosLayoutContext";
+import { formatCurrency } from "../../utils/formatters";
 
 interface IPadHeaderProps {
   title: string;
@@ -26,6 +28,7 @@ export function IPadHeader({
   showCartButton = false,
 }: IPadHeaderProps) {
   const { items, subtotal } = useCart();
+  const { layoutMode, setLayoutMode } = usePosLayout();
 
   return (
     <View style={styles.container}>
@@ -47,6 +50,35 @@ export function IPadHeader({
       </View>
 
       <View style={styles.rightSection}>
+        {/* POS Mode Switcher (Visible on Point of Sale) */}
+        {title === "Point of Sale" && (
+          <View style={styles.modeSwitcherContainer}>
+            <TouchableOpacity
+              style={[styles.modeBtn, layoutMode === "apple_touch" && styles.modeBtnActive]}
+              onPress={() => setLayoutMode("apple_touch")}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Modo POS Táctil Apple"
+            >
+              <Text style={[styles.modeBtnText, layoutMode === "apple_touch" && styles.modeBtnTextActive]}>
+                📱 Táctil POS
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.modeBtn, layoutMode === "classic" && styles.modeBtnActive]}
+              onPress={() => setLayoutMode("classic")}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Modo Catálogo Web"
+            >
+              <Text style={[styles.modeBtnText, layoutMode === "classic" && styles.modeBtnTextActive]}>
+                🖥️ Catálogo Web
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <ConnectivityBadge state={connectivityState} onRetry={onRetryConnection} />
 
         <View style={styles.hardwareBadge}>
@@ -58,11 +90,11 @@ export function IPadHeader({
             style={styles.cartBtn}
             onPress={onOpenCart}
             accessibilityRole="button"
-            accessibilityLabel={`Cart with ${items.length} items, subtotal $${subtotal.toFixed(2)}`}
+            accessibilityLabel={`Cart with ${items.length} items, subtotal ${formatCurrency(subtotal)}`}
           >
             <Text style={styles.cartIcon}>🛒</Text>
             <Text style={styles.cartCount}>{items.length}</Text>
-            <Text style={styles.cartTotal}>${subtotal.toFixed(2)}</Text>
+            <Text style={styles.cartTotal}>{formatCurrency(subtotal)}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -157,5 +189,31 @@ const styles = StyleSheet.create({
     color: IPAD_THEME.colors.accent,
     fontWeight: "800",
     fontSize: 13,
+  },
+  modeSwitcherContainer: {
+    flexDirection: "row",
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    borderRadius: IPAD_THEME.radius.full,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    marginRight: IPAD_THEME.spacing.sm,
+  },
+  modeBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: IPAD_THEME.radius.full,
+  },
+  modeBtnActive: {
+    backgroundColor: IPAD_THEME.colors.accent,
+  },
+  modeBtnText: {
+    color: IPAD_THEME.colors.textMuted,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  modeBtnTextActive: {
+    color: "#0f172a",
+    fontWeight: "900",
   },
 });

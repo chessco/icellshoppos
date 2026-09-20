@@ -6,6 +6,7 @@ import {
   localeFromAcceptLanguage,
   getLocaleCookieOptions,
 } from "@/lib/i18n/config";
+import { addCorsHeaders } from "@/lib/cors";
 
 const PUBLIC_PAGE_PATHS = new Set(["/login", "/register", "/reset-password", "/public-inventory"]);
 const PUBLIC_API_PATHS = new Set([
@@ -69,17 +70,6 @@ const withLocaleCookie = (request: NextRequest, response: NextResponse) => {
   return response;
 };
 
-const addCorsHeaders = (response: NextResponse, request: NextRequest) => {
-  const origin = request.headers.get("origin");
-  if (origin) {
-    response.headers.set("Access-Control-Allow-Origin", origin);
-    response.headers.set("Access-Control-Allow-Credentials", "true");
-    response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
-    response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, Cookie, X-Requested-With, Accept");
-  }
-  return response;
-};
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -123,7 +113,8 @@ export async function middleware(request: NextRequest) {
   }
 
   if (PUBLIC_PAGE_PATHS.has(pathname) || PUBLIC_API_PATHS.has(pathname) || isPublicInventoryPath(pathname)) {
-    return withLocaleCookie(request, NextResponse.next());
+    const res = withLocaleCookie(request, NextResponse.next());
+    return pathname.startsWith("/api/") ? addCorsHeaders(res, request) : res;
   }
 
   let token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
@@ -161,7 +152,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname.startsWith("/api/admin/") && !session.isSuperadmin) {
-    return withLocaleCookie(request, NextResponse.json({ error: "Forbidden" }, { status: 403 }));
+    return addCorsHeaders(withLocaleCookie(request, NextResponse.json({ error: "Forbidden" }, { status: 403 })), request);
   }
 
   if ((pathname === "/admin" || pathname.startsWith("/admin/")) && !session.isSuperadmin) {
@@ -171,16 +162,20 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname.startsWith("/api/org/") && !session.activeOrganizationId) {
-    return withLocaleCookie(
-      request,
-      NextResponse.json(
-        { error: "No active organization selected" },
-        { status: 403 }
-      )
+    return addCorsHeaders(
+      withLocaleCookie(
+        request,
+        NextResponse.json(
+          { error: "No active organization selected" },
+          { status: 403 }
+        )
+      ),
+      request
     );
   }
 
-  return withLocaleCookie(request, NextResponse.next());
+  const res = withLocaleCookie(request, NextResponse.next());
+  return pathname.startsWith("/api/") ? addCorsHeaders(res, request) : res;
 }
 
 export const config = {

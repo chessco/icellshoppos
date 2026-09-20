@@ -27,15 +27,28 @@ test("Idempotency: buildIdempotentReplayResponse formats response correctly", ()
     id: "sale-uuid-123",
     saleNumber: "SALE-REPLAY-001",
     total: 15400,
+    items: [
+      {
+        id: "item-1",
+        inventoryItemId: "inv-1",
+        imei: "354928110293847",
+        model: "iPhone 13",
+        capacity: "128GB",
+        color: "Blue",
+        salePrice: 15400,
+      },
+    ],
   };
 
   const response = buildIdempotentReplayResponse(saleRecord);
-  assert.deepEqual(response, {
-    success: true,
-    saleId: "SALE-REPLAY-001",
-    total: 15400,
-    idempotentReplay: true,
-  });
+  assert.equal(response.success, true);
+  assert.equal(response.saleId, "SALE-REPLAY-001");
+  assert.equal(response.saleNumber, "SALE-REPLAY-001");
+  assert.equal(response.total, 15400);
+  assert.equal(response.idempotentReplay, true);
+  assert.equal(response.items.length, 1);
+  assert.equal(response.items[0].imei, "354928110293847");
+  assert.equal(response.items[0].salePrice, 15400);
 });
 
 test("TEST 1 & 2: First checkout creates sale; second identical checkout returns existing sale without creating another", async () => {

@@ -136,6 +136,7 @@ test("TEST 11: Checkout payload contains the normalized +52 value", async () => 
           saleId: "sale-100",
           saleNumber: "S-100",
           total: 1000,
+          items: [],
         },
       };
     },

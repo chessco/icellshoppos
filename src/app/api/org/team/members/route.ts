@@ -75,7 +75,11 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "membershipId is required." }, { status: 400 });
     }
 
-    if (!["staff", "admin", "superadmin"].includes(roleInput)) {
+    if (roleInput === "superadmin") {
+      return NextResponse.json({ error: "Assigning superadmin role is not permitted." }, { status: 403 });
+    }
+
+    if (!["staff", "admin"].includes(roleInput)) {
       return NextResponse.json({ error: "Invalid role." }, { status: 400 });
     }
 
@@ -95,7 +99,7 @@ export async function PATCH(request: NextRequest) {
     const updated = await db.membership.update({
       where: { id: membershipId },
       data: {
-        role: roleInput as "superadmin" | "admin" | "staff",
+        role: roleInput as "admin" | "staff",
         permissionsJson: permissions,
       },
       select: {

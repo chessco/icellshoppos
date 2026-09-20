@@ -17,5 +17,5 @@ export const getAppBaseUrl = () => {
   if (configured) {
     return configured.replace(/\/$/, "");
   }
-  return "http://localhost:3000";
+  return "http://localhost:3007";
 };

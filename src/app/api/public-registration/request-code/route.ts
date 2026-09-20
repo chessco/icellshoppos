@@ -2,6 +2,7 @@ import { createHash, randomInt } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendVerificationCodeEmail } from "@/lib/email";
+import { checkEmailCodeRateLimit } from "@/lib/code-rate-limit";
 
 const REGISTRATION_VERIFICATION_PURPOSE = "public-registration";
 const VERIFICATION_TTL_MINUTES = 10;
@@ -18,6 +19,19 @@ export async function POST(request: NextRequest) {
 
     if (!email) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
+    }
+
+    const rateLimit = await checkEmailCodeRateLimit(email, REGISTRATION_VERIFICATION_PURPOSE);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: rateLimit.error, retryAfterSeconds: rateLimit.retryAfterSeconds },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(rateLimit.retryAfterSeconds),
+          },
+        }
+      );
     }
 
     const code = generateCode();

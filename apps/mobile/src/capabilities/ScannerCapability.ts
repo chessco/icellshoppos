@@ -22,6 +22,15 @@ export interface ParsedScanCode {
   normalizedValue: string;
 }
 
+export type ScanMatchFailureReason = "NOT_FOUND" | "LOADING" | "ERROR";
+
+export interface ScanMatchResult<T = unknown> {
+  matched: boolean;
+  item?: T;
+  reason?: ScanMatchFailureReason;
+  errorMessage?: string;
+}
+
 export class MobileScannerCapability implements IScannerCapability {
   async getStatus(): Promise<ScannerStatus> {
     try {

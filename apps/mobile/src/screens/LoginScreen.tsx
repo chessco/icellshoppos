@@ -14,7 +14,7 @@ import { IPAD_THEME } from "../theme/tokens";
 
 export function LoginScreen() {
   const { login, isLoading, requires2FA, loginError, baseUrl, setBaseUrl } = useAuth();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState("info.cdobregon@gmail.com");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [showConfig, setShowConfig] = useState(false);

@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import type { IInventoryListItem } from "@ireader/contracts";
 import { IPAD_THEME } from "../../theme/tokens";
 import { Badge } from "../ui/Badge";
+import { formatCurrency } from "../../utils/formatters";
 
 interface ProductCardProps {
   item: IInventoryListItem;
@@ -19,8 +20,7 @@ export const ProductCard = React.memo(function ProductCard({
   onSelect,
   onQuickAdd,
 }: ProductCardProps) {
-  const formattedPrice =
-    typeof item.price === "number" ? `$${item.price.toFixed(2)}` : `$${item.price}`;
+  const formattedPrice = formatCurrency(item.price);
 
   const specString = [item.capacity, item.color, item.carrier].filter(Boolean).join(" • ");
 

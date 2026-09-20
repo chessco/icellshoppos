@@ -1,9 +1,31 @@
 import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from "react";
+import { NativeModules } from "react-native";
 import { ProBuyerApiClient } from "@ireader/api-client";
 import { AuthApplicationService } from "@ireader/application";
 import type { SessionMeResponse, IAuthToken } from "@ireader/contracts";
 import { CookieAuthToken, BearerAuthToken } from "@ireader/contracts";
 import { MobileSecureStorageAdapter } from "../storage/MobileSecureStorageAdapter";
+
+export const DEFAULT_BACKEND_URL = "https://probuyer.pitayacode.io";
+
+function getInitialBackendUrl(): string {
+  // Always prioritize active HTTPS ngrok tunnel to satisfy iOS App Transport Security (ATS)
+  if (DEFAULT_BACKEND_URL) {
+    return DEFAULT_BACKEND_URL;
+  }
+  try {
+    const scriptURL = (NativeModules as any)?.SourceCode?.scriptURL;
+    if (scriptURL && typeof scriptURL === "string") {
+      const match = scriptURL.match(/^https?:\/\/([^:/]+)/);
+      if (match && match[1] && match[1] !== "localhost" && match[1] !== "127.0.0.1") {
+        return `http://${match[1]}:3007`;
+      }
+    }
+  } catch {
+    // Fallback on error
+  }
+  return "http://127.0.0.1:3007";
+}
 
 interface AuthContextValue {
   session: SessionMeResponse["session"] | null;
@@ -23,7 +45,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [baseUrl, setBaseUrlState] = useState<string>("http://127.0.0.1:3000");
+  const [baseUrl, setBaseUrlState] = useState<string>(getInitialBackendUrl);
   const [session, setSession] = useState<SessionMeResponse["session"] | null>(null);
   const [organizations, setOrganizations] = useState<SessionMeResponse["organizations"]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
@@ -43,7 +65,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const apiClient = useMemo(() => {
     return new ProBuyerApiClient({
-      baseUrl,
+      baseUrl: getInitialBackendUrl(),
+      timeoutMs: 6000,
       getToken: () => currentTokenRef.current,
       onUnauthorized: () => {
         setSession(null);
@@ -64,10 +87,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async function restoreSession() {
       setIsLoading(true);
       try {
-        const savedUrl = await storage.getItem("base_url");
-        if (savedUrl && isMounted) {
-          setBaseUrlState(savedUrl);
-          apiClient.setBaseUrl(savedUrl);
+        let savedUrl = await storage.getItem("base_url");
+        if (
+          savedUrl &&
+          (savedUrl.includes("127.0.0.1") ||
+            savedUrl.includes("localhost") ||
+            savedUrl.includes("169.254.") ||
+            savedUrl.includes(":3000"))
+        ) {
+          savedUrl = null;
+          await storage.removeItem("base_url");
+        }
+
+        const effectiveUrl = savedUrl || getInitialBackendUrl();
+        if (effectiveUrl && isMounted) {
+          setBaseUrlState(effectiveUrl);
+          apiClient.setBaseUrl(effectiveUrl);
         }
 
         const savedTokenVal = await storage.getItem("auth_token");
