@@ -146,7 +146,7 @@ export const getEffectiveMailConfig = async (): Promise<MailConfig> => {
     resendFromEmail: (
       dbSettings["RESEND_FROM_EMAIL"] ||
       process.env.RESEND_FROM_EMAIL ||
-      "onboarding@resend.dev"
+      "noreply@core.pitayacode.io"
     ).trim(),
     mailgunApiKey: (dbSettings["MAILGUN_API_KEY"] || process.env.MAILGUN_API_KEY || "")
       .trim()
@@ -185,7 +185,7 @@ const sendViaResend = async (
     throw new Error("Missing RESEND_API_KEY in configuration.");
   }
 
-  const fromEmail = config.resendFromEmail || "onboarding@resend.dev";
+  const fromEmail = config.resendFromEmail || "noreply@core.pitayacode.io";
   const formattedFrom = fromEmail.includes("<")
     ? fromEmail
     : `Pro Buyer <${fromEmail}>`;
