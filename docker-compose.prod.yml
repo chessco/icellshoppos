@@ -57,8 +57,7 @@ services:
 
 networks:
   icellshop_net:
-    name: icellshop_net
-    driver: bridge
+    external: true
   pitaya_net:
     external: true
 
