@@ -16,6 +16,7 @@ export function LoginScreen() {
   const { login, isLoading, requires2FA, setRequires2FA, loginError, baseUrl, setBaseUrl } = useAuth();
   const [email, setEmail] = useState("info.cdobregon@gmail.com");
   const [password, setPassword] = useState("");
+  const savedPasswordRef = useRef("");
   const [code, setCode] = useState("");
   const [showConfig, setShowConfig] = useState(false);
   const [tempUrl, setTempUrl] = useState(baseUrl);
@@ -27,7 +28,8 @@ export function LoginScreen() {
       setLocalError("Please enter your email.");
       return;
     }
-    if (!password) {
+    const effectivePassword = password || savedPasswordRef.current;
+    if (!effectivePassword) {
       setLocalError("Please enter your password.");
       return;
     }
@@ -35,7 +37,10 @@ export function LoginScreen() {
       setLocalError("Please enter the 6-digit verification code sent to your email.");
       return;
     }
-    await login(email.trim(), password, requires2FA ? code.trim() : undefined);
+    if (password) {
+      savedPasswordRef.current = password;
+    }
+    await login(email.trim(), effectivePassword, requires2FA ? code.trim() : undefined);
   };
 
   return (
@@ -77,15 +82,20 @@ export function LoginScreen() {
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Password</Text>
           <TextInput
-            style={styles.input}
-            value={password}
+            style={[
+              styles.input,
+              requires2FA && savedPasswordRef.current ? { backgroundColor: "#f1f5f9", opacity: 0.85 } : null,
+            ]}
+            value={password || (requires2FA && savedPasswordRef.current ? "••••••••••••" : "")}
             onChangeText={(val) => {
               setPassword(val);
+              savedPasswordRef.current = val;
               setLocalError(null);
             }}
             placeholder="••••••••"
             placeholderTextColor={IPAD_THEME.colors.textMuted}
             secureTextEntry
+            editable={!requires2FA || !savedPasswordRef.current}
             accessibilityLabel="Password"
           />
         </View>
@@ -105,6 +115,7 @@ export function LoginScreen() {
               placeholderTextColor={IPAD_THEME.colors.textMuted}
               keyboardType="number-pad"
               maxLength={6}
+              autoFocus
               accessibilityLabel="Two Factor Verification Code"
             />
           </View>
@@ -132,6 +143,8 @@ export function LoginScreen() {
             onPress={() => {
               setRequires2FA(false);
               setCode("");
+              setPassword("");
+              savedPasswordRef.current = "";
               setLocalError(null);
             }}
           >

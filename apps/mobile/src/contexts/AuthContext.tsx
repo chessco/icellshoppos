@@ -142,14 +142,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     void storage.setItem("base_url", url);
   };
 
+  const pendingPasswordRef = useRef<string>("");
+
   const login = async (email: string, pass: string, code?: string): Promise<boolean> => {
     setIsLoading(true);
     setLoginError(null);
     try {
+      const effectivePassword = pass || pendingPasswordRef.current;
+      if (pass) {
+        pendingPasswordRef.current = pass;
+      }
+
       const res = await apiClient.login({
         baseUrl,
         email,
-        password: pass,
+        password: effectivePassword,
         verificationCode: code,
       });
 
@@ -167,6 +174,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoginError(res.error || "Login failed");
         return false;
       }
+
+      pendingPasswordRef.current = "";
 
       // Extract session token from JSON or cookie header
       const setCookie = res.rawHeaders?.get("set-cookie") || "";
