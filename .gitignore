@@ -102,3 +102,6 @@ desktop.ini
 *.tmp
 *.bak
 *.swp
+*.dump
+*.sql
+
