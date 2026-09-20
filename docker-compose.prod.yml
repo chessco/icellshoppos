@@ -52,8 +52,11 @@ services:
         limits:
           memory: 1024M
     networks:
-      - icellshop_net
-      - pitaya_net
+      icellshop_net:
+      pitaya_net:
+        aliases:
+          - probuyer
+          - icellshop-probuyer
 
 networks:
   icellshop_net:
