@@ -51,6 +51,6 @@ USER nextjs
 EXPOSE 3007
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD curl -f http://127.0.0.1:3007/api/system-health || exit 1
+  CMD curl -f http://127.0.0.1:3007/robots.txt || exit 1
 
 CMD ["node", "server.js"]
