@@ -128,11 +128,10 @@ export async function POST(request: NextRequest) {
 
         console.log(`\n🔑 =======================================================\n[SUPERADMIN 2FA CODE for ${email}]: ${code}\n=======================================================\n`);
 
-        try {
-          await sendSuperadminLoginCodeEmail(email, code);
-        } catch (mailError) {
-          console.warn("[Superadmin 2FA] Email delivery failed, code logged to container output:", mailError);
-        }
+        // Send email non-blocking in background so login UI responds immediately without timeout
+        void sendSuperadminLoginCodeEmail(email, code).catch((mailError) => {
+          console.warn("[Superadmin 2FA] Background email delivery failed, code logged to container output:", mailError);
+        });
 
         return NextResponse.json({
           requiresVerification: true,
