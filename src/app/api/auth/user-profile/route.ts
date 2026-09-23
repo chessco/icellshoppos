@@ -58,7 +58,12 @@ export async function GET(request: NextRequest) {
     role = "superadmin";
   }
 
-  return NextResponse.json({ user, organization, role });
+  return NextResponse.json({
+    user,
+    organization,
+    role,
+    isSuperadmin: Boolean(session.isSuperadmin),
+  });
 }
 
 export async function PUT(request: NextRequest) {

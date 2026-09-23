@@ -29,10 +29,12 @@ type OrgData = {
 } | null;
 
 type SubscriptionData = {
+  id?: string;
+  planId?: string;
   status: string;
   trialEndsAt: string | null;
   currentPeriodEnd: string | null;
-  plan: { name: string; basePriceCents: number } | null;
+  plan: { id?: string; name: string; code?: string; basePriceCents: number } | null;
 } | null;
 
 type PermissionKey =
@@ -181,6 +183,16 @@ export default function ProfilePage() {
   );
   const [teamMessage, setTeamMessage] = useState("");
 
+  const [isSuperadmin, setIsSuperadmin] = useState(false);
+  const [showPlanUpgradeModal, setShowPlanUpgradeModal] = useState(false);
+  const [availablePlans, setAvailablePlans] = useState<
+    Array<{ id: string; name: string; code: string; basePriceCents: number; trialDays: number }>
+  >([]);
+  const [selectedPlanId, setSelectedPlanId] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState<"active" | "trialing">("active");
+  const [upgradingPlan, setUpgradingPlan] = useState(false);
+  const [upgradeMessage, setUpgradeMessage] = useState("");
+
   useEffect(() => {
     Promise.all([
       fetch("/api/auth/user-profile").then((r) => {
@@ -201,11 +213,64 @@ export default function ProfilePage() {
         setLocale(nextLanguage);
         setOrganization(profileData.organization ?? null);
         setRole(profileData.role ?? null);
+        setIsSuperadmin(Boolean(profileData.isSuperadmin || profileData.role === "superadmin"));
         const sub = orgData?.organization?.subscriptions?.[0] ?? null;
         setSubscription(sub);
       })
       .finally(() => setLoading(false));
   }, [router, setLocale]);
+
+  const handleOpenPlanUpgrade = async () => {
+    setShowPlanUpgradeModal(true);
+    setUpgradeMessage("");
+    try {
+      const res = await fetch("/api/org/plans");
+      if (res.ok) {
+        const data = await res.json();
+        const plans = data.plans || [];
+        setAvailablePlans(plans);
+        if (plans.length > 0) {
+          const currentPlanId = subscription?.plan?.id || plans[0].id;
+          setSelectedPlanId(currentPlanId);
+        }
+      }
+    } catch (err) {
+      console.error("Error loading plans:", err);
+    }
+  };
+
+  const handleApplySuperadminUpgrade = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!organization?.id || !selectedPlanId) return;
+    setUpgradingPlan(true);
+    setUpgradeMessage("");
+    try {
+      const res = await fetch("/api/admin/subscriptions/upgrade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId: organization.id,
+          planId: selectedPlanId,
+          status: selectedStatus,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSubscription(data.subscription);
+        setUpgradeMessage("¡Plan actualizado y ascendido exitosamente!");
+        setTimeout(() => {
+          setShowPlanUpgradeModal(false);
+          setUpgradeMessage("");
+        }, 1500);
+      } else {
+        setUpgradeMessage(data.error || "Error al actualizar plan");
+      }
+    } catch (err) {
+      setUpgradeMessage("Error de conexión al ascender plan");
+    } finally {
+      setUpgradingPlan(false);
+    }
+  };
 
   useEffect(() => {
     if (!(role === "admin" || role === "superadmin")) return;
@@ -799,15 +864,117 @@ export default function ProfilePage() {
 
             {/* Subscription / Plan card */}
             <section className="rounded-2xl border border-[#d6e4ff] bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-semibold uppercase tracking-wider text-[#4b6292]">Subscription</h2>
-                <Link
-                  href="/billing"
-                  className="rounded-full bg-[#2563eb] px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-[#1d4ed8]"
-                >
-                  Manage Billing
-                </Link>
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-[#4b6292]">Subscription</h2>
+                  {isSuperadmin && (
+                    <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-[10px] font-bold tracking-wide text-amber-800 uppercase shadow-xs">
+                      👑 Superadmin
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {isSuperadmin && (
+                    <button
+                      type="button"
+                      onClick={handleOpenPlanUpgrade}
+                      className="rounded-full bg-gradient-to-r from-amber-500 to-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:brightness-105"
+                    >
+                      ⚡ Modificar Plan
+                    </button>
+                  )}
+                  <Link
+                    href="/billing"
+                    className="rounded-full bg-[#2563eb] px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-[#1d4ed8]"
+                  >
+                    Manage Billing
+                  </Link>
+                </div>
               </div>
+
+              {/* Superadmin Upgrade Modal / Inline Panel */}
+              {isSuperadmin && showPlanUpgradeModal && (
+                <div className="mb-5 rounded-xl border border-amber-300 bg-amber-50/60 p-4 shadow-sm animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">⚡</span>
+                      <h3 className="text-sm font-bold text-amber-950">
+                        Ascender Plan de Organización (Superadmin Override)
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowPlanUpgradeModal(false)}
+                      className="text-xs text-amber-800 hover:text-amber-950 font-bold px-2 py-1 rounded-md"
+                    >
+                      ✕ Cerrar
+                    </button>
+                  </div>
+                  <p className="text-xs text-amber-800/90 mb-4">
+                    Como Superadmin, puedes cambiar de inmediato el plan de esta organización sin pasar por la pasarela de Stripe.
+                  </p>
+
+                  <form onSubmit={handleApplySuperadminUpgrade} className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-amber-900 mb-1">
+                        Seleccionar Plan Destino
+                      </label>
+                      <select
+                        value={selectedPlanId}
+                        onChange={(e) => setSelectedPlanId(e.target.value)}
+                        className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-[#1f3563] outline-none focus:ring-2 focus:ring-amber-500"
+                        disabled={upgradingPlan}
+                      >
+                        {availablePlans.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.code}) - ${(p.basePriceCents / 100).toFixed(2)}/mes
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-amber-900 mb-1">
+                        Estado de Suscripción
+                      </label>
+                      <select
+                        value={selectedStatus}
+                        onChange={(e) => setSelectedStatus(e.target.value as "active" | "trialing")}
+                        className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-[#1f3563] outline-none focus:ring-2 focus:ring-amber-500"
+                        disabled={upgradingPlan}
+                      >
+                        <option value="active">Activo (Full Access / Pago Válido)</option>
+                        <option value="trialing">Trialing (Periodo de Prueba)</option>
+                      </select>
+                    </div>
+
+                    {upgradeMessage && (
+                      <div className="sm:col-span-2 text-xs font-medium text-amber-900 bg-amber-100/80 p-2.5 rounded-lg border border-amber-300">
+                        {upgradeMessage}
+                      </div>
+                    )}
+
+                    <div className="sm:col-span-2 flex items-center justify-end gap-2 mt-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowPlanUpgradeModal(false)}
+                        className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                        disabled={upgradingPlan}
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={upgradingPlan}
+                        className="rounded-lg bg-amber-600 px-5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        {upgradingPlan ? "Aplicando..." : "Confirmar y Ascender"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
               <dl className="divide-y divide-[#eef4ff]">
                 <InfoRow label="Plan" value={planName} />
                 <InfoRow label="Status" value={subStatus} capitalize />
