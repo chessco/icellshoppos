@@ -23,6 +23,8 @@ export function AppleTouchCard({ group, onPressGroup }: AppleTouchCardProps) {
     (ci) => (ci?.inventoryItem?.model || "").toLowerCase() === group.modelKey
   ).length;
 
+  const isSingleItem = group.items?.length === 1;
+
   const handlePress = () => {
     // Animación táctil suave
     Animated.sequence([
@@ -57,7 +59,7 @@ export function AppleTouchCard({ group, onPressGroup }: AppleTouchCardProps) {
         onPress={handlePress}
         activeOpacity={0.75}
         accessibilityRole="button"
-        accessibilityLabel={`${group.modelName}, ${group.totalAvailable} disponibles, desde ${formattedMinPrice}. Toca para configurar.`}
+        accessibilityLabel={`${group.modelName}, ${group.totalAvailable} disponibles, ${isSingleItem ? "precio" : "desde"} ${formattedMinPrice}. ${isSingleItem ? "Toca para agregar al carrito de inmediato." : "Toca para configurar."}`}
       >
         {/* Fila Superior: Badges y Estado */}
         <View style={styles.topRow}>
@@ -118,13 +120,13 @@ export function AppleTouchCard({ group, onPressGroup }: AppleTouchCardProps) {
         {/* Fila Inferior: Precio Desde y Botón de Acción */}
         <View style={styles.bottomRow}>
           <View>
-            <Text style={styles.priceLabel}>DESDE</Text>
+            <Text style={styles.priceLabel}>{isSingleItem ? "PRECIO" : "DESDE"}</Text>
             <Text style={styles.priceValue}>{formattedMinPrice}</Text>
           </View>
 
           <View style={[styles.chooseBtn, inCartCount > 0 && styles.chooseBtnActive]}>
             <Text style={[styles.chooseBtnText, inCartCount > 0 && styles.chooseBtnTextActive]}>
-              Elegir ›
+              {inCartCount > 0 ? "✓ En ticket" : isSingleItem ? "+ Agregar" : "Elegir ›"}
             </Text>
           </View>
         </View>

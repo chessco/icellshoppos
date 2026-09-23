@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -59,7 +59,7 @@ export function AppleTouchPosView({
   onOpenMessages,
 }: AppleTouchPosViewProps) {
   const { width } = useWindowDimensions();
-  const { addItem, items: cartItems } = useCart();
+  const { addItem, items: cartItems, hasItem } = useCart();
 
   // Por defecto iniciamos en iPhone y en el Top Más Vendidos para que la pantalla sea ultra-ligera (4-6 tarjetas)
   const [selectedCategory, setSelectedCategory] = useState("iphone");
@@ -67,6 +67,36 @@ export function AppleTouchPosView({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedGroup, setSelectedGroup] = useState<AppleModelGroup | null>(null);
   const [viewDensity, setViewDensity] = useState<"grid" | "compact">("grid");
+  const [quickToast, setQuickToast] = useState<string | null>(null);
+
+  // Auto-cierre del toast de retroalimentación
+  useEffect(() => {
+    if (!quickToast) return;
+    const timer = setTimeout(() => {
+      setQuickToast(null);
+    }, 2200);
+    return () => clearTimeout(timer);
+  }, [quickToast]);
+
+  // Selección inteligente con 1-tap directo al carrito para productos con 1 solo ítem
+  const handleSelectGroup = (group: AppleModelGroup) => {
+    if (group.items && group.items.length === 1) {
+      const singleItem = group.items[0];
+      if (singleItem) {
+        if (!hasItem(singleItem.id)) {
+          addItem(singleItem);
+          const spec = [singleItem.capacity, singleItem.color].filter(Boolean).join(" ");
+          setQuickToast(`✓ Agregado al ticket: ${singleItem.model}${spec ? ` (${spec})` : ""}`);
+        } else {
+          setQuickToast(`ℹ️ ${singleItem.model} ya está en el ticket`);
+        }
+        return;
+      }
+    }
+
+    // Si tiene más de una unidad o variante, abrir configurador táctil
+    setSelectedGroup(group);
+  };
 
   // En iPad vertical, 2 columnas amplias es la proporción ideal
   const numColumns = width >= 1200 ? 3 : 2;
@@ -343,11 +373,12 @@ export function AppleTouchPosView({
             const inCart = (cartItems || []).filter(
               (ci) => (ci?.inventoryItem?.model || "").toLowerCase() === group.modelKey
             ).length;
+            const isSingle = group.items?.length === 1;
 
             return (
               <TouchableOpacity
                 style={[styles.compactRow, inCart > 0 && styles.compactRowInCart]}
-                onPress={() => setSelectedGroup(group)}
+                onPress={() => handleSelectGroup(group)}
                 activeOpacity={0.7}
               >
                 <View style={styles.compactLeft}>
@@ -381,11 +412,13 @@ export function AppleTouchPosView({
 
                 <View style={styles.compactRight}>
                   <View style={styles.compactPriceBox}>
-                    <Text style={styles.compactPriceLabel}>DESDE</Text>
+                    <Text style={styles.compactPriceLabel}>{isSingle ? "PRECIO" : "DESDE"}</Text>
                     <Text style={styles.compactPriceVal}>{formatCurrency(group.minPrice)}</Text>
                   </View>
-                  <View style={styles.compactActionBtn}>
-                    <Text style={styles.compactActionBtnText}>Elegir ›</Text>
+                  <View style={[styles.compactActionBtn, inCart > 0 && styles.compactActionBtnInCart]}>
+                    <Text style={[styles.compactActionBtnText, inCart > 0 && styles.compactActionBtnTextInCart]}>
+                      {inCart > 0 ? "✓ Listo" : isSingle ? "+ Agregar" : "Elegir ›"}
+                    </Text>
                   </View>
                 </View>
               </TouchableOpacity>
@@ -405,7 +438,7 @@ export function AppleTouchPosView({
           numColumns={numColumns}
           renderItem={({ item: group }) => {
             if (!group || !group.modelKey) return null;
-            return <AppleTouchCard group={group} onPressGroup={setSelectedGroup} />;
+            return <AppleTouchCard group={group} onPressGroup={handleSelectGroup} />;
           }}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
@@ -421,6 +454,15 @@ export function AppleTouchPosView({
         onClose={() => setSelectedGroup(null)}
         onAddToCart={addItem}
       />
+
+      {/* Toast flotante de retroalimentación inmediata */}
+      {quickToast && (
+        <View style={styles.quickToastContainer} pointerEvents="none">
+          <View style={styles.quickToastPill}>
+            <Text style={styles.quickToastText}>{quickToast}</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -797,10 +839,45 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(56, 189, 248, 0.3)",
   },
+  compactActionBtnInCart: {
+    backgroundColor: IPAD_THEME.colors.accent,
+    borderColor: IPAD_THEME.colors.accent,
+  },
   compactActionBtnText: {
     color: "#38bdf8",
     fontSize: 11,
     fontWeight: "800",
+  },
+  compactActionBtnTextInCart: {
+    color: "#0f172a",
+    fontWeight: "900",
+  },
+  quickToastContainer: {
+    position: "absolute",
+    bottom: 24,
+    left: 24,
+    right: 24,
+    alignItems: "center",
+    zIndex: 999,
+  },
+  quickToastPill: {
+    backgroundColor: "#161f30",
+    borderWidth: 1.5,
+    borderColor: IPAD_THEME.colors.accent,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: IPAD_THEME.radius.full,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  quickToastText: {
+    color: "#f8fafc",
+    fontSize: 13,
+    fontWeight: "800",
+    textAlign: "center",
   },
   statusBar: {
     paddingTop: 4,
