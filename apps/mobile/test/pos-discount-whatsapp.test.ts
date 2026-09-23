@@ -34,7 +34,7 @@ test("Discount Authorization: Pending authorization blocks checkout total and re
 
   assert.equal(auth.status, "PENDING");
   // En estado PENDING no se aplica el descuento al total hasta que el autorizador responda por WhatsApp
-  const appliedDiscount = auth.status === "APPROVED" ? auth.approvedDiscount : 0;
+  const appliedDiscount = (auth.status as string) === "APPROVED" ? auth.approvedDiscount : 0;
   assert.equal(appliedDiscount, 0);
 
   // Verificamos que el checkout payload valide y contenga la autorización
