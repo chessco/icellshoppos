@@ -30,6 +30,12 @@ const isSubActive = (subHref: string, pathname: string) => {
   if (subHref === "/inventory") {
     return pathname === "/inventory";
   }
+  if (subHref === "/profile") {
+    return pathname === "/profile";
+  }
+  if (subHref === "/settings") {
+    return pathname === "/settings";
+  }
   return pathname === subHref || pathname.startsWith(`${subHref}/`);
 };
 
@@ -59,14 +65,10 @@ const memberNavItems: NavItem[] = [
       { href: "/label-designer", label: "Label Designer", labelKey: "sidebar.labelDesigner" },
     ],
   },
-  { href: "/messages", label: "Messages", labelKey: "sidebar.messages", match: "exact" },
   { href: "/credit", label: "Credit", labelKey: "sidebar.credit", match: "exact" },
   { href: "/audit", label: "Register Audit", labelKey: "sidebar.registerAudit", match: "exact" },
   { href: "/repairs", label: "Repairs", labelKey: "sidebar.repairs", match: "prefix" },
   { href: "/purchase-orders", label: "Purchase Orders", labelKey: "sidebar.purchaseOrders", match: "exact" },
-  { href: "/data", label: "Data Admin", labelKey: "sidebar.dataAdmin", match: "exact" },
-  { href: "/billing", label: "Billing", labelKey: "sidebar.billing", match: "exact" },
-  { href: "/profile", label: "Profile", labelKey: "sidebar.profile", match: "exact" },
   { href: "/profile/user-manual", label: "User Manual", labelKey: "sidebar.userManual", match: "exact" },
   {
     href: "/settings",
@@ -74,6 +76,10 @@ const memberNavItems: NavItem[] = [
     labelKey: "sidebar.settings",
     match: "prefix",
     children: [
+      { href: "/profile", label: "Profile", labelKey: "sidebar.profile" },
+      { href: "/billing", label: "Billing", labelKey: "sidebar.billing" },
+      { href: "/data", label: "Data Admin", labelKey: "sidebar.dataAdmin" },
+      { href: "/messages", label: "Messages", labelKey: "sidebar.messages" },
       { href: "/settings/integrations", label: "Integrations", labelKey: "sidebar.integrations" },
     ],
   },
@@ -105,19 +111,19 @@ const superadminNavItems: NavItem[] = [
       { href: "/label-designer", label: "Label Designer", labelKey: "sidebar.labelDesigner" },
     ],
   },
-  { href: "/messages", label: "Messages", labelKey: "sidebar.messages", match: "exact" },
-  { href: "/admin/billing", label: "Billing", labelKey: "sidebar.billing", match: "exact" },
-  { href: "/profile", label: "Profile", labelKey: "sidebar.profile", match: "exact" },
   { href: "/profile/user-manual", label: "User Manual", labelKey: "sidebar.userManual", match: "exact" },
-  { href: "/admin/plans", label: "Plans", labelKey: "sidebar.plans", match: "exact" },
-  { href: "/admin/users", label: "Users", labelKey: "sidebar.users", match: "exact" },
-  { href: "/admin/email-settings", label: "Email Settings", labelKey: "sidebar.emailSettings", match: "exact" },
   {
     href: "/settings",
     label: "Settings",
     labelKey: "sidebar.settings",
     match: "prefix",
     children: [
+      { href: "/profile", label: "Profile", labelKey: "sidebar.profile" },
+      { href: "/admin/billing", label: "Billing", labelKey: "sidebar.billing" },
+      { href: "/admin/plans", label: "Plans", labelKey: "sidebar.plans" },
+      { href: "/admin/users", label: "Users", labelKey: "sidebar.users" },
+      { href: "/admin/email-settings", label: "Email Settings", labelKey: "sidebar.emailSettings" },
+      { href: "/messages", label: "Messages", labelKey: "sidebar.messages" },
       { href: "/settings/integrations", label: "Integrations", labelKey: "sidebar.integrations" },
     ],
   },
