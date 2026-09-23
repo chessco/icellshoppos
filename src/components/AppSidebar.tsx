@@ -46,7 +46,6 @@ const memberNavItems: NavItem[] = [
       { href: "/public-inventory-settings", label: "Public Inventory", labelKey: "sidebar.publicInventory" },
     ],
   },
-  { href: "/label-designer", label: "Label Designer", labelKey: "sidebar.labelDesigner", match: "exact" },
   {
     href: "/sales",
     label: "Sales",
@@ -57,6 +56,7 @@ const memberNavItems: NavItem[] = [
       { href: "/sales/history", label: "Sales History", labelKey: "sidebar.salesHistory" },
       { href: "/sales/authorizations", label: "Discount Approvals", labelKey: "sidebar.discountAuthorizations" },
       { href: "/commissions", label: "Commissions", labelKey: "sidebar.commissions" },
+      { href: "/label-designer", label: "Label Designer", labelKey: "sidebar.labelDesigner" },
     ],
   },
   { href: "/messages", label: "Messages", labelKey: "sidebar.messages", match: "exact" },
@@ -102,6 +102,7 @@ const superadminNavItems: NavItem[] = [
       { href: "/sales/history", label: "Sales History", labelKey: "sidebar.salesHistory" },
       { href: "/sales/authorizations", label: "Discount Approvals", labelKey: "sidebar.discountAuthorizations" },
       { href: "/commissions", label: "Commissions", labelKey: "sidebar.commissions" },
+      { href: "/label-designer", label: "Label Designer", labelKey: "sidebar.labelDesigner" },
     ],
   },
   { href: "/messages", label: "Messages", labelKey: "sidebar.messages", match: "exact" },
