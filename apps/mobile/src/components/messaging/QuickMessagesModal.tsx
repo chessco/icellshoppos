@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -58,6 +58,8 @@ export function QuickMessagesModal({
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
   const [newChatPhone, setNewChatPhone] = useState(initialPhone || "");
   const [newChatName, setNewChatName] = useState(initialCustomerName || "");
+
+  const messagesScrollRef = useRef<ScrollView>(null);
 
   // Real conversations state with fallback defaults
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
@@ -274,6 +276,12 @@ export function QuickMessagesModal({
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
+        {/* Tapping backdrop closes and returns to POS */}
+        <TouchableOpacity
+          style={StyleSheet.absoluteFill}
+          activeOpacity={1}
+          onPress={onClose}
+        />
         <View style={styles.modalCard}>
           {/* Top Header Bar with Luxury Styling */}
           <View style={styles.headerBar}>
@@ -281,9 +289,9 @@ export function QuickMessagesModal({
               <View style={styles.mailIconBadge}>
                 <Text style={styles.mailIconEmoji}>✉️</Text>
               </View>
-              <View>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Text style={styles.headerTitle}>Mensajería Luxury & WhatsApp</Text>
+              <View style={{ flexShrink: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <Text style={styles.headerTitle}>Mensajería Interna & Clientes</Text>
                   <View style={styles.orgBadge}>
                     <View style={styles.orgGreenDot} />
                     <Text style={styles.orgBadgeText}>
@@ -291,8 +299,8 @@ export function QuickMessagesModal({
                     </Text>
                   </View>
                 </View>
-                <Text style={styles.headerSubtitle}>
-                  Comunicación directa con clientes y pasarela oficial PitayaCore
+                <Text style={styles.headerSubtitle} numberOfLines={1}>
+                  Comunicación directa con clientes WhatsApp y equipo interno
                 </Text>
               </View>
             </View>
@@ -311,21 +319,17 @@ export function QuickMessagesModal({
                 accessibilityRole="button"
                 accessibilityLabel="Actualizar mensajes"
               >
-                <Text style={styles.refreshBtnText}>🔄 Actualizar</Text>
+                <Text style={styles.refreshBtnText}>🔄</Text>
               </TouchableOpacity>
-
-              <View style={styles.activeServiceBadge}>
-                <View style={styles.greenPulseDot} />
-                <Text style={styles.activeServiceText}>Servicio Activo</Text>
-              </View>
 
               <TouchableOpacity
                 onPress={onClose}
-                style={styles.closeBtn}
+                style={styles.backToPosBtn}
                 accessibilityRole="button"
-                accessibilityLabel="Cerrar mensajería"
+                accessibilityLabel="Cerrar y volver al POS"
+                activeOpacity={0.8}
               >
-                <Text style={styles.closeBtnText}>✕</Text>
+                <Text style={styles.backToPosBtnText}>✕ Volver al POS</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -435,37 +439,60 @@ export function QuickMessagesModal({
             {/* Right Column: Chat Window & Input (64% width) */}
             <View style={styles.chatColumn}>
               {selectedConversation ? (
-                <KeyboardAvoidingView
-                  style={styles.chatWrapper}
-                  behavior={Platform.OS === "ios" ? "padding" : undefined}
-                >
+                <View style={styles.chatWrapper}>
                   {/* Chat Top Banner */}
                   <View style={styles.chatHeader}>
-                    <View>
-                      <Text style={styles.chatCustomerName}>
+                    <View style={{ flexShrink: 1, maxWidth: "45%" }}>
+                      <Text style={styles.chatCustomerName} numberOfLines={1}>
                         {selectedConversation.customerName}
                       </Text>
-                      <Text style={styles.chatCustomerPhone}>
+                      <Text style={styles.chatCustomerPhone} numberOfLines={1}>
                         {selectedConversation.phone} • En línea vía WhatsApp
                       </Text>
                     </View>
 
-                    <TouchableOpacity
-                      style={styles.quickReceiptBtn}
-                      onPress={() => {
-                        setMessageText(
-                          `Hola ${selectedConversation.customerName}, le compartimos el recibo digital de su compra en Pro Buyer POS. Puede consultar los detalles escaneando su ticket de entrega.`
-                        );
-                      }}
-                    >
-                      <Text style={styles.quickReceiptText}>🧾 Enviar Recibo</Text>
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <TouchableOpacity
+                        style={styles.scrollJumpBtn}
+                        onPress={() => {
+                          messagesScrollRef.current?.scrollTo({ y: 0, animated: true });
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Ver primer mensaje"
+                      >
+                        <Text style={styles.scrollJumpBtnText}>⬆ Ver Inicio</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.scrollJumpBtn}
+                        onPress={() => {
+                          messagesScrollRef.current?.scrollToEnd({ animated: true });
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Ver último mensaje"
+                      >
+                        <Text style={styles.scrollJumpBtnText}>⬇ Ver Fin</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.quickReceiptBtn}
+                        onPress={() => {
+                          setMessageText(
+                            `Hola ${selectedConversation.customerName}, le compartimos el recibo digital de su compra en Pro Buyer POS. Puede consultar los detalles escaneando su ticket de entrega.`
+                          );
+                        }}
+                      >
+                        <Text style={styles.quickReceiptText}>🧾 Recibo</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
 
                   {/* Messages Bubble List */}
                   <ScrollView
+                    ref={messagesScrollRef}
                     style={styles.messagesScroll}
                     contentContainerStyle={styles.messagesContainer}
+                    keyboardShouldPersistTaps="handled"
                   >
                     {activeMessages.length === 0 ? (
                       <View style={styles.emptyMessagesBox}>
@@ -521,31 +548,36 @@ export function QuickMessagesModal({
                   </ScrollView>
 
                   {/* Message Composer Bar */}
-                  <View style={styles.composerBar}>
-                    <TextInput
-                      style={styles.composerInput}
-                      placeholder="Escriba un mensaje para WhatsApp..."
-                      placeholderTextColor={IPAD_THEME.colors.textMuted}
-                      value={messageText}
-                      onChangeText={setMessageText}
-                      multiline
-                    />
-                    <TouchableOpacity
-                      style={[
-                        styles.sendBtn,
-                        (!messageText.trim() || isSending) && styles.sendBtnDisabled,
-                      ]}
-                      onPress={handleSendMessage}
-                      disabled={!messageText.trim() || isSending}
-                    >
-                      {isSending ? (
-                        <ActivityIndicator size="small" color="#ffffff" />
-                      ) : (
-                        <Text style={styles.sendBtnText}>Enviar</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </KeyboardAvoidingView>
+                  <KeyboardAvoidingView
+                    behavior={Platform.OS === "ios" ? "padding" : undefined}
+                    keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
+                  >
+                    <View style={styles.composerBar}>
+                      <TextInput
+                        style={styles.composerInput}
+                        placeholder="Escriba un mensaje para WhatsApp..."
+                        placeholderTextColor={IPAD_THEME.colors.textMuted}
+                        value={messageText}
+                        onChangeText={setMessageText}
+                        multiline
+                      />
+                      <TouchableOpacity
+                        style={[
+                          styles.sendBtn,
+                          (!messageText.trim() || isSending) && styles.sendBtnDisabled,
+                        ]}
+                        onPress={handleSendMessage}
+                        disabled={!messageText.trim() || isSending}
+                      >
+                        {isSending ? (
+                          <ActivityIndicator size="small" color="#ffffff" />
+                        ) : (
+                          <Text style={styles.sendBtnText}>Enviar</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </KeyboardAvoidingView>
+                </View>
               ) : (
                 <View style={styles.emptyChatPlaceholder}>
                   <Text style={styles.emptyPlaceholderIcon}>✉️</Text>
@@ -1021,6 +1053,39 @@ const styles = StyleSheet.create({
     textAlign: "center",
     maxWidth: 320,
     lineHeight: 18,
+  },
+  backToPosBtn: {
+    backgroundColor: "#ef4444",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#ef4444",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  backToPosBtnText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.3,
+  },
+  scrollJumpBtn: {
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.15)",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  scrollJumpBtnText: {
+    color: "#e2e8f0",
+    fontSize: 10,
+    fontWeight: "700",
   },
   composerBar: {
     flexDirection: "row",
