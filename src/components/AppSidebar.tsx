@@ -69,7 +69,6 @@ const memberNavItems: NavItem[] = [
   { href: "/audit", label: "Register Audit", labelKey: "sidebar.registerAudit", match: "exact" },
   { href: "/repairs", label: "Repairs", labelKey: "sidebar.repairs", match: "prefix" },
   { href: "/purchase-orders", label: "Purchase Orders", labelKey: "sidebar.purchaseOrders", match: "exact" },
-  { href: "/profile/user-manual", label: "User Manual", labelKey: "sidebar.userManual", match: "exact" },
   {
     href: "/settings",
     label: "Settings",
@@ -81,6 +80,7 @@ const memberNavItems: NavItem[] = [
       { href: "/data", label: "Data Admin", labelKey: "sidebar.dataAdmin" },
       { href: "/messages", label: "Messages", labelKey: "sidebar.messages" },
       { href: "/settings/integrations", label: "Integrations", labelKey: "sidebar.integrations" },
+      { href: "/profile/user-manual", label: "User Manual", labelKey: "sidebar.userManual" },
     ],
   },
 ];
@@ -111,7 +111,6 @@ const superadminNavItems: NavItem[] = [
       { href: "/label-designer", label: "Label Designer", labelKey: "sidebar.labelDesigner" },
     ],
   },
-  { href: "/profile/user-manual", label: "User Manual", labelKey: "sidebar.userManual", match: "exact" },
   {
     href: "/settings",
     label: "Settings",
@@ -125,6 +124,7 @@ const superadminNavItems: NavItem[] = [
       { href: "/admin/email-settings", label: "Email Settings", labelKey: "sidebar.emailSettings" },
       { href: "/messages", label: "Messages", labelKey: "sidebar.messages" },
       { href: "/settings/integrations", label: "Integrations", labelKey: "sidebar.integrations" },
+      { href: "/profile/user-manual", label: "User Manual", labelKey: "sidebar.userManual" },
     ],
   },
 ];
