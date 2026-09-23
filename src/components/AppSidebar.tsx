@@ -166,6 +166,7 @@ const subItemClass = (active: boolean) =>
 export default function AppSidebar({ pathname }: AppSidebarProps) {
   const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [pendingInventoryRequests, setPendingInventoryRequests] = useState(0);
   const [pendingPurchaseRequests, setPendingPurchaseRequests] = useState(0);
   const [isSuperadmin, setIsSuperadmin] = useState(false);
@@ -174,7 +175,25 @@ export default function AppSidebar({ pathname }: AppSidebarProps) {
 
   useEffect(() => {
     setMenuOpen(false);
+    setOpenSections({});
   }, [pathname]);
+
+  const isSectionOpen = (itemHref: string, active: boolean) => {
+    if (openSections[itemHref] !== undefined) {
+      return openSections[itemHref];
+    }
+    return active;
+  };
+
+  const toggleSection = (itemHref: string, currentActive: boolean) => {
+    setOpenSections((prev) => {
+      const currentlyOpen = prev[itemHref] !== undefined ? prev[itemHref] : currentActive;
+      return {
+        ...prev,
+        [itemHref]: !currentlyOpen,
+      };
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -375,6 +394,8 @@ export default function AppSidebar({ pathname }: AppSidebarProps) {
               {navItems.map((item) => {
                 const active = isActiveItem(item, pathname);
                 const badgeCount = getPendingBadge(item.href);
+                const hasChildren = Boolean(item.children && item.children.length > 0);
+                const isOpen = isSectionOpen(item.href, active);
                 return (
                   <div key={item.href} className="flex flex-col">
                     <Link href={item.href} className={itemClass(active, item.primary)}>
@@ -383,16 +404,37 @@ export default function AppSidebar({ pathname }: AppSidebarProps) {
                           {item.labelKey === "sidebar.settings" && <span className="text-xs">⚙️</span>}
                           <span>{t(item.labelKey, item.label)}</span>
                         </span>
-                        {badgeCount > 0 && (
-                          <span className="rounded-full bg-[#ef4444] px-2 py-0.5 text-[10px] font-bold leading-none text-white">
-                            {badgeCount}
-                          </span>
-                        )}
+                        <span className="inline-flex items-center gap-1.5">
+                          {badgeCount > 0 && (
+                            <span className="rounded-full bg-[#ef4444] px-2 py-0.5 text-[10px] font-bold leading-none text-white">
+                              {badgeCount}
+                            </span>
+                          )}
+                          {hasChildren && (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                toggleSection(item.href, active);
+                              }}
+                              className={`flex h-5 w-5 items-center justify-center rounded-md transition text-[10px] font-bold ${
+                                active ? "text-blue-200 hover:text-white hover:bg-white/10" : "text-slate-400 hover:text-[#1f3563] hover:bg-slate-200/60"
+                              }`}
+                              title={isOpen ? "Colapsar submenú" : "Expandir submenú"}
+                            >
+                              <span className={`inline-block transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`}>
+                                ▶
+                              </span>
+                            </span>
+                          )}
+                        </span>
                       </span>
                     </Link>
-                    {item.children && item.children.length > 0 && (
-                      <div className="ml-3 pl-2.5 border-l-2 border-[#bfd4ff] flex flex-col gap-1 my-1.5">
-                        {item.children.map((sub) => {
+                    {hasChildren && isOpen && (
+                      <div className="ml-3 pl-2.5 border-l-2 border-[#bfd4ff] flex flex-col gap-1 my-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                        {item.children!.map((sub) => {
                           const subActive = isSubActive(sub.href, pathname);
                           const subBadge = getPendingBadge(sub.href);
                           return (
@@ -434,6 +476,8 @@ export default function AppSidebar({ pathname }: AppSidebarProps) {
           {navItems.map((item) => {
             const active = isActiveItem(item, pathname);
             const badgeCount = getPendingBadge(item.href);
+            const hasChildren = Boolean(item.children && item.children.length > 0);
+            const isOpen = isSectionOpen(item.href, active);
             return (
               <div key={item.href} className="flex flex-col">
                 <Link href={item.href} className={itemClass(active, item.primary)}>
@@ -442,16 +486,37 @@ export default function AppSidebar({ pathname }: AppSidebarProps) {
                       {item.labelKey === "sidebar.settings" && <span className="text-xs">⚙️</span>}
                       <span>{t(item.labelKey, item.label)}</span>
                     </span>
-                    {badgeCount > 0 && (
-                      <span className="rounded-full bg-[#ef4444] px-2 py-0.5 text-[10px] font-bold leading-none text-white">
-                        {badgeCount}
-                      </span>
-                    )}
+                    <span className="inline-flex items-center gap-1.5">
+                      {badgeCount > 0 && (
+                        <span className="rounded-full bg-[#ef4444] px-2 py-0.5 text-[10px] font-bold leading-none text-white">
+                          {badgeCount}
+                        </span>
+                      )}
+                      {hasChildren && (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleSection(item.href, active);
+                          }}
+                          className={`flex h-5 w-5 items-center justify-center rounded-md transition text-[10px] font-bold ${
+                            active ? "text-blue-200 hover:text-white hover:bg-white/10" : "text-slate-400 hover:text-[#1f3563] hover:bg-slate-200/60"
+                          }`}
+                          title={isOpen ? "Colapsar submenú" : "Expandir submenú"}
+                        >
+                          <span className={`inline-block transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`}>
+                            ▶
+                          </span>
+                        </span>
+                      )}
+                    </span>
                   </span>
                 </Link>
-                {item.children && item.children.length > 0 && (
-                  <div className="ml-3 pl-2.5 border-l-2 border-[#bfd4ff] flex flex-col gap-1 my-1.5">
-                    {item.children.map((sub) => {
+                {hasChildren && isOpen && (
+                  <div className="ml-3 pl-2.5 border-l-2 border-[#bfd4ff] flex flex-col gap-1 my-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                    {item.children!.map((sub) => {
                       const subActive = isSubActive(sub.href, pathname);
                       const subBadge = getPendingBadge(sub.href);
                       return (
