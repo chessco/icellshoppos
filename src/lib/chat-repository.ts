@@ -36,6 +36,19 @@ export type ConversationSummary = {
   unread: number;
 };
 
+export function canonicalWhatsAppPhone(phone: string): string {
+  const d = phone.replace(/\D/g, "");
+  // Mexican mobile numbers: 521XXXXXXXXXX -> 52XXXXXXXXXX (standard E.164 without prefix 1)
+  if (d.length === 13 && d.startsWith("521")) {
+    return `52${d.substring(3)}`;
+  }
+  // 10 digits Mexican local -> 52XXXXXXXXXX
+  if (d.length === 10) {
+    return `52${d}`;
+  }
+  return d;
+}
+
 export async function createChatMessage(data: {
   organizationId: string;
   channel: "WHATSAPP" | "INTERNAL";
@@ -55,6 +68,8 @@ export async function createChatMessage(data: {
   const now = new Date();
   const direction = data.direction || "OUTBOUND";
   const status = data.status || "SENT";
+  const convId = data.channel === "WHATSAPP" ? canonicalWhatsAppPhone(data.conversationId) : data.conversationId;
+  const recipPhone = data.recipientPhone ? canonicalWhatsAppPhone(data.recipientPhone) : null;
 
   await db.$executeRawUnsafe(
     `INSERT INTO "ChatMessage" (
@@ -66,10 +81,10 @@ export async function createChatMessage(data: {
     id,
     data.organizationId,
     data.channel,
-    data.conversationId,
+    convId,
     data.senderId || null,
     data.senderName || null,
-    data.recipientPhone || null,
+    recipPhone,
     data.recipientName || null,
     data.recipientUserId || null,
     data.content,
@@ -85,10 +100,10 @@ export async function createChatMessage(data: {
     id,
     organizationId: data.organizationId,
     channel: data.channel,
-    conversationId: data.conversationId,
+    conversationId: convId,
     senderId: data.senderId || null,
     senderName: data.senderName || null,
-    recipientPhone: data.recipientPhone || null,
+    recipientPhone: recipPhone,
     recipientName: data.recipientName || null,
     recipientUserId: data.recipientUserId || null,
     content: data.content,
@@ -106,13 +121,20 @@ export async function getChatMessages(
   channel: "WHATSAPP" | "INTERNAL",
   conversationId: string
 ): Promise<ChatMessageRecord[]> {
+  const targetId = channel === "WHATSAPP" ? canonicalWhatsAppPhone(conversationId) : conversationId;
+  const variants = [targetId];
+  if (targetId.startsWith("52") && targetId.length === 12) {
+    variants.push(`521${targetId.substring(2)}`);
+    variants.push(targetId.substring(2));
+  }
+
   const rows = await db.$queryRawUnsafe<any[]>(
     `SELECT * FROM "ChatMessage"
-     WHERE "organizationId" = $1 AND "channel" = $2 AND "conversationId" = $3
+     WHERE "organizationId" = $1 AND "channel" = $2 AND "conversationId" = ANY($3::text[])
      ORDER BY "createdAt" ASC`,
     organizationId,
     channel,
-    conversationId
+    variants
   );
 
   return rows.map((r) => ({
@@ -168,29 +190,39 @@ export async function getWhatsAppConversations(organizationId: string): Promise<
 
   // Add recorded message conversations
   for (const m of messages) {
-    const cleanPhone = String(m.conversationId).replace(/\D/g, "");
+    const rawClean = String(m.conversationId).replace(/\D/g, "");
+    const cleanPhone = canonicalWhatsAppPhone(rawClean);
     const formatted = formatPhone(cleanPhone);
     const clientName = m.recipientName || `CLIENTE (${formatted})`;
 
-    convMap.set(cleanPhone, {
-      id: cleanPhone,
-      conversationId: cleanPhone,
-      cleanPhone,
-      formattedPhone: formatted,
-      clientName: clientName.toUpperCase(),
-      lastMessage: m.content || "Sin mensajes",
-      direction: m.direction,
-      status: m.status,
-      updatedAt: new Date(m.createdAt).toISOString(),
-      unread: 0,
-    });
+    if (convMap.has(cleanPhone)) {
+      const existing = convMap.get(cleanPhone)!;
+      if (new Date(m.createdAt).getTime() > new Date(existing.updatedAt).getTime()) {
+        existing.lastMessage = m.content || "Sin mensajes";
+        existing.direction = m.direction;
+        existing.status = m.status;
+        existing.updatedAt = new Date(m.createdAt).toISOString();
+      }
+    } else {
+      convMap.set(cleanPhone, {
+        id: cleanPhone,
+        conversationId: cleanPhone,
+        cleanPhone,
+        formattedPhone: formatted,
+        clientName: clientName.toUpperCase(),
+        lastMessage: m.content || "Sin mensajes",
+        direction: m.direction,
+        status: m.status,
+        updatedAt: new Date(m.createdAt).toISOString(),
+        unread: 0,
+      });
+    }
   }
 
   // Merge registered Customers
   for (const c of customers) {
     if (!c.whatsapp) continue;
-    const cleanDigits = c.whatsapp.replace(/\D/g, "");
-    const key = cleanDigits.length === 10 ? `52${cleanDigits}` : cleanDigits;
+    const key = canonicalWhatsAppPhone(c.whatsapp);
     if (!key) continue;
 
     if (convMap.has(key)) {
@@ -215,8 +247,7 @@ export async function getWhatsAppConversations(organizationId: string): Promise<
   // Merge Repair Customers
   for (const rc of repairCustomers) {
     if (!rc.whatsapp) continue;
-    const cleanDigits = rc.whatsapp.replace(/\D/g, "");
-    const key = cleanDigits.length === 10 ? `52${cleanDigits}` : cleanDigits;
+    const key = canonicalWhatsAppPhone(rc.whatsapp);
     if (!key) continue;
 
     if (convMap.has(key)) {

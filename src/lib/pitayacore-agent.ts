@@ -108,6 +108,27 @@ export async function notifyAuthorizerViaWhatsApp(params: {
 
   try {
     const result = await whatsAppGateway.sendMessage(authorizerPhone, message, organizationId);
+
+    // Registrar en el historial de mensajes de iCellShop para que aparezca en /messages
+    try {
+      const { createChatMessage } = await import("@/lib/chat-repository");
+      const cleanPhone = authorizerPhone.replace(/\D/g, "");
+      await createChatMessage({
+        organizationId,
+        channel: "WHATSAPP",
+        conversationId: cleanPhone,
+        senderName: snapshot.seller.name || "Sistema POS",
+        recipientPhone: cleanPhone,
+        recipientName: "Autorizador",
+        content: message,
+        direction: "OUTBOUND",
+        status: result.success ? "SENT" : "FAILED",
+        providerMessageId: result.providerMessageId || null,
+      });
+    } catch (chatErr) {
+      console.warn("[PitayaCore Agent] No se pudo registrar ChatMessage:", chatErr);
+    }
+
     return {
       success: result.success,
       messageId: result.providerMessageId,

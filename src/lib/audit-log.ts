@@ -2,7 +2,7 @@ import { prisma } from "./prisma";
 
 interface AuditLogParams {
   organizationId?: string;
-  actorUserId: string;
+  actorUserId?: string | null;
   action: string;
   entity: string;
   entityId?: string;

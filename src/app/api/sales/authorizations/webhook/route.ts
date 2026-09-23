@@ -48,12 +48,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // --- 2. Buscar la autorización para obtener organizationId ---
-    const authorization = await db.discountAuthorization.findUnique({
-      where: { id: authorizationId },
-    });
+    // --- 2. Buscar la autorización para obtener organizationId (soporta UUID completo o prefijo corto de 8 caracteres) ---
+    let authorization = null;
+    const cleanAuthId = authorizationId.trim();
+
+    if (cleanAuthId.length === 36 && cleanAuthId.includes("-")) {
+      authorization = await db.discountAuthorization.findUnique({
+        where: { id: cleanAuthId },
+      });
+    }
 
     if (!authorization) {
+      // Buscar por prefijo (ej. primeros 8 caracteres "3C5467BC")
+      authorization = await db.discountAuthorization.findFirst({
+        where: {
+          id: {
+            startsWith: cleanAuthId.toLowerCase(),
+            mode: "insensitive",
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    }
+
+    if (!authorization) {
+      console.warn(`[Webhook] No se encontró autorización con ID o prefijo: "${cleanAuthId}"`);
       // Responder 200 para no exponer existencia del recurso a llamadas no autorizadas
       return NextResponse.json({ success: true, message: "No action taken." });
     }
@@ -106,7 +125,7 @@ export async function POST(request: NextRequest) {
 
     // --- 6. Actualizar la autorización en DB ---
     const updated = await db.discountAuthorization.update({
-      where: { id: authorizationId },
+      where: { id: authorization.id },
       data: {
         status: resolution.status,
         approvedDiscount: resolution.approvedDiscount,
@@ -124,11 +143,12 @@ export async function POST(request: NextRequest) {
     // --- 7. Audit log ---
     await logAudit({
       organizationId: orgId,
-      actorUserId: "PITAYACORE_AGENT", // Evento externo vía webhook — sin sesión de usuario
+      actorUserId: undefined, // Evento externo vía webhook — sin ID de usuario en User table
       action: `discount_authorization.webhook_${resolution.status.toLowerCase()}`,
       entity: "DiscountAuthorization",
       entityId: updated.id,
       meta: {
+        actor: "PITAYACORE_AGENT",
         action,
         source: "PITAYACORE_WEBHOOK",
         authorizedByPhone,
@@ -139,6 +159,35 @@ export async function POST(request: NextRequest) {
         responseNote,
       },
     });
+
+    // --- 8. Registrar respuesta en ChatMessage para que aparezca en /messages ---
+    try {
+      const { createChatMessage, canonicalWhatsAppPhone } = await import("@/lib/chat-repository");
+      const cleanPhone = canonicalWhatsAppPhone(authorizedByPhone || "");
+      if (cleanPhone) {
+        const actionLabel =
+          resolution.status === "APPROVED"
+            ? `✅ Descuento de $${resolution.approvedDiscount} APROBADO`
+            : resolution.status === "PARTIAL"
+            ? `💛 Descuento parcial de $${resolution.approvedDiscount} APROBADO (solicitado: $${updated.requestedDiscount})`
+            : `❌ Descuento RECHAZADO`;
+
+        const noteSnippet = responseNote ? `\n"${responseNote}"` : "";
+
+        await createChatMessage({
+          organizationId: orgId,
+          channel: "WHATSAPP",
+          conversationId: cleanPhone,
+          recipientPhone: cleanPhone,
+          senderName: "Autorizador (WhatsApp)",
+          content: `${actionLabel}${noteSnippet}`,
+          direction: "INBOUND",
+          status: "DELIVERED",
+        });
+      }
+    } catch (chatErr) {
+      console.warn("[Webhook] No se pudo registrar ChatMessage entrante:", chatErr);
+    }
 
     console.log(
       `[Webhook] Autorización ${authorizationId} resuelta: ${resolution.status} | Descuento aprobado: $${resolution.approvedDiscount}`
