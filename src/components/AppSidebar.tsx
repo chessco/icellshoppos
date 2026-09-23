@@ -63,10 +63,10 @@ const memberNavItems: NavItem[] = [
       { href: "/sales/authorizations", label: "Discount Approvals", labelKey: "sidebar.discountAuthorizations" },
       { href: "/commissions", label: "Commissions", labelKey: "sidebar.commissions" },
       { href: "/label-designer", label: "Label Designer", labelKey: "sidebar.labelDesigner" },
+      { href: "/audit", label: "Register Audit", labelKey: "sidebar.registerAudit" },
     ],
   },
   { href: "/credit", label: "Credit", labelKey: "sidebar.credit", match: "exact" },
-  { href: "/audit", label: "Register Audit", labelKey: "sidebar.registerAudit", match: "exact" },
   { href: "/repairs", label: "Repairs", labelKey: "sidebar.repairs", match: "prefix" },
   { href: "/purchase-orders", label: "Purchase Orders", labelKey: "sidebar.purchaseOrders", match: "exact" },
   {
@@ -109,6 +109,7 @@ const superadminNavItems: NavItem[] = [
       { href: "/sales/authorizations", label: "Discount Approvals", labelKey: "sidebar.discountAuthorizations" },
       { href: "/commissions", label: "Commissions", labelKey: "sidebar.commissions" },
       { href: "/label-designer", label: "Label Designer", labelKey: "sidebar.labelDesigner" },
+      { href: "/audit", label: "Register Audit", labelKey: "sidebar.registerAudit" },
     ],
   },
   {
