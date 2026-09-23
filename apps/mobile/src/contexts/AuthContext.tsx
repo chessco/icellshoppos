@@ -6,7 +6,9 @@ import type { SessionMeResponse, IAuthToken } from "@ireader/contracts";
 import { CookieAuthToken, BearerAuthToken } from "@ireader/contracts";
 import { MobileSecureStorageAdapter } from "../storage/MobileSecureStorageAdapter";
 
-export const DEFAULT_BACKEND_URL = "https://probuyer.pitayacode.io";
+export const DEV_NGROK_URL = "https://9a7a-2806-263-481-a79-6d7f-ef8d-326a-ee86.ngrok-free.app";
+export const PROD_BACKEND_URL = "https://probuyer.pitayacode.io";
+export const DEFAULT_BACKEND_URL = DEV_NGROK_URL;
 
 function getInitialBackendUrl(): string {
   // Always prioritize active HTTPS ngrok tunnel to satisfy iOS App Transport Security (ATS)
@@ -104,7 +106,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await storage.removeItem("base_url");
         }
 
-        const effectiveUrl = savedUrl || getInitialBackendUrl();
+        const isDev = typeof __DEV__ !== "undefined" && __DEV__;
+        const effectiveUrl = (isDev && DEV_NGROK_URL) ? DEV_NGROK_URL : (savedUrl || getInitialBackendUrl());
         if (effectiveUrl && isMounted) {
           setBaseUrlState(effectiveUrl);
           apiClient.setBaseUrl(effectiveUrl);

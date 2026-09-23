@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth, DEV_NGROK_URL, PROD_BACKEND_URL } from "../contexts/AuthContext";
 import { usePosLayout } from "../contexts/PosLayoutContext";
 import { IPAD_THEME } from "../theme/tokens";
 import { Button } from "../components/ui/Button";
@@ -79,8 +79,38 @@ export function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Pro Buyer API Connection</Text>
           <Text style={styles.sectionSub}>
-            Authoritative backend endpoint for inventory, pricing, and checkout operations.
+            Authoritative backend endpoint for inventory, pricing, checkout, and WhatsApp messaging.
           </Text>
+
+          <View style={{ flexDirection: "row", gap: 10, marginVertical: 12 }}>
+            <TouchableOpacity
+              style={[styles.presetBtn, urlInput === DEV_NGROK_URL && styles.presetBtnActive]}
+              onPress={() => {
+                setUrlInput(DEV_NGROK_URL);
+                setBaseUrl(DEV_NGROK_URL);
+                setSavedSuccess(true);
+                setTimeout(() => setSavedSuccess(false), 2000);
+              }}
+            >
+              <Text style={[styles.presetBtnText, urlInput === DEV_NGROK_URL && styles.presetBtnTextActive]}>
+                ⚡ Servidor Local (Ngrok)
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.presetBtn, urlInput === PROD_BACKEND_URL && styles.presetBtnActive]}
+              onPress={() => {
+                setUrlInput(PROD_BACKEND_URL);
+                setBaseUrl(PROD_BACKEND_URL);
+                setSavedSuccess(true);
+                setTimeout(() => setSavedSuccess(false), 2000);
+              }}
+            >
+              <Text style={[styles.presetBtnText, urlInput === PROD_BACKEND_URL && styles.presetBtnTextActive]}>
+                🌐 Producción (Cloud)
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Base URL</Text>
@@ -88,7 +118,7 @@ export function SettingsScreen() {
               style={styles.input}
               value={urlInput}
               onChangeText={setUrlInput}
-              placeholder="http://127.0.0.1:3007"
+              placeholder="https://..."
               placeholderTextColor={IPAD_THEME.colors.textMuted}
               autoCapitalize="none"
               autoCorrect={false}
@@ -251,5 +281,28 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     marginLeft: IPAD_THEME.spacing.md,
+  },
+  presetBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: IPAD_THEME.radius.md,
+    backgroundColor: IPAD_THEME.colors.surfaceSecondary,
+    borderWidth: 1.5,
+    borderColor: IPAD_THEME.colors.borderSubtle,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  presetBtnActive: {
+    borderColor: IPAD_THEME.colors.accent,
+    backgroundColor: "rgba(56, 189, 248, 0.12)",
+  },
+  presetBtnText: {
+    color: IPAD_THEME.colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  presetBtnTextActive: {
+    color: IPAD_THEME.colors.accent,
   },
 });

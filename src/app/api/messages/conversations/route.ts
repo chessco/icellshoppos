@@ -18,7 +18,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ conversations });
     }
 
-    const conversations = await getWhatsAppConversations(membership.organizationId);
+    const userOrgIds = Array.from(
+      new Set([
+        membership.organizationId,
+        ...session.memberships.map((m) => m.organizationId),
+        ...(session.activeOrganizationId ? [session.activeOrganizationId] : []),
+      ])
+    );
+
+    const conversations = await getWhatsAppConversations(userOrgIds);
     return NextResponse.json({ conversations });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") {

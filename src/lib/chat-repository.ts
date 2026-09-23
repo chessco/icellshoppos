@@ -117,10 +117,11 @@ export async function createChatMessage(data: {
 }
 
 export async function getChatMessages(
-  organizationId: string,
+  organizationId: string | string[],
   channel: "WHATSAPP" | "INTERNAL",
   conversationId: string
 ): Promise<ChatMessageRecord[]> {
+  const orgIds = Array.isArray(organizationId) ? organizationId : [organizationId];
   const targetId = channel === "WHATSAPP" ? canonicalWhatsAppPhone(conversationId) : conversationId;
   const variants = [targetId];
   if (targetId.startsWith("52") && targetId.length === 12) {
@@ -130,9 +131,9 @@ export async function getChatMessages(
 
   const rows = await db.$queryRawUnsafe<any[]>(
     `SELECT * FROM "ChatMessage"
-     WHERE "organizationId" = $1 AND "channel" = $2 AND "conversationId" = ANY($3::text[])
+     WHERE "organizationId" = ANY($1::text[]) AND "channel" = $2 AND "conversationId" = ANY($3::text[])
      ORDER BY "createdAt" ASC`,
-    organizationId,
+    orgIds,
     channel,
     variants
   );
@@ -157,24 +158,26 @@ export async function getChatMessages(
   }));
 }
 
-export async function getWhatsAppConversations(organizationId: string): Promise<ConversationSummary[]> {
+export async function getWhatsAppConversations(organizationId: string | string[]): Promise<ConversationSummary[]> {
+  const orgIds = Array.isArray(organizationId) ? organizationId : [organizationId];
+
   // Fetch messages grouped by conversationId
   const messages = await db.$queryRawUnsafe<any[]>(
     `SELECT DISTINCT ON ("conversationId") *
      FROM "ChatMessage"
-     WHERE "organizationId" = $1 AND "channel" = 'WHATSAPP'
+     WHERE "organizationId" = ANY($1::text[]) AND "channel" = 'WHATSAPP'
      ORDER BY "conversationId", "createdAt" DESC`,
-    organizationId
+    orgIds
   );
 
   // Also fetch customers with phone to ensure all known customers are available in the conversation list
   const customers = await db.customer.findMany({
-    where: { organizationId, whatsapp: { not: null } },
+    where: { organizationId: { in: orgIds }, whatsapp: { not: null } },
     select: { id: true, name: true, whatsapp: true, updatedAt: true },
   });
 
   const repairCustomers = await db.repairCustomer.findMany({
-    where: { organizationId, whatsapp: { not: null } },
+    where: { organizationId: { in: orgIds }, whatsapp: { not: null } },
     select: { id: true, name: true, whatsapp: true, updatedAt: true },
   });
 

@@ -18,8 +18,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Missing conversationId" }, { status: 400 });
     }
 
+    const userOrgIds = Array.from(
+      new Set([
+        membership.organizationId,
+        ...session.memberships.map((m) => m.organizationId),
+        ...(session.activeOrganizationId ? [session.activeOrganizationId] : []),
+      ])
+    );
+
     const cleanConversationId = channel === "WHATSAPP" ? conversationId.replace(/\D/g, "") : conversationId;
-    const messages = await getChatMessages(membership.organizationId, channel, cleanConversationId);
+    const messages = await getChatMessages(userOrgIds, channel, cleanConversationId);
 
     return NextResponse.json({ messages });
   } catch (error) {

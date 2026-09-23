@@ -47,7 +47,8 @@ export function QuickMessagesModal({
   initialPhone,
   initialCustomerName,
 }: QuickMessagesModalProps) {
-  const { session, apiClient } = useAuth();
+  const { session, apiClient, organizations } = useAuth();
+  const activeOrgName = organizations?.find((o) => o.id === session?.activeOrganizationId)?.name || "PitayaCode";
   const [activeTab, setActiveTab] = useState<"WHATSAPP" | "INTERNAL">("WHATSAPP");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedConversation, setSelectedConversation] = useState<ConversationItem | null>(null);
@@ -71,9 +72,9 @@ export function QuickMessagesModal({
       const res = await apiClient.getWhatsAppConversations(tabParam);
       if (res.ok && Array.isArray(res.data)) {
         const loaded: ConversationItem[] = res.data.map((c: any) => ({
-          id: String(c.id || c.conversationId || c.phone || ""),
-          phone: c.phone || (c.conversationId ? `+${c.conversationId}` : ""),
-          customerName: c.customerName || c.recipientName || (activeTab === "WHATSAPP" ? "Cliente WhatsApp" : "Compañero"),
+          id: String(c.cleanPhone || c.conversationId || c.id || c.phone || ""),
+          phone: c.formattedPhone || c.cleanPhone || c.phone || (c.conversationId ? `+${c.conversationId}` : ""),
+          customerName: c.clientName || c.customerName || c.recipientName || (activeTab === "WHATSAPP" ? "Cliente WhatsApp" : "Compañero"),
           lastMessage: c.lastMessage || c.content || "",
           updatedAt: c.updatedAt
             ? new Date(c.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -82,19 +83,36 @@ export function QuickMessagesModal({
         })).filter((c) => Boolean(c.id));
 
         setConversations(loaded);
+
+        // Keep selected conversation in sync with fresh data
+        setSelectedConversation((curr) => {
+          if (!curr && loaded.length > 0 && !initialPhone) {
+            return loaded[0];
+          }
+          if (curr) {
+            const match = loaded.find((item) => item.id === curr.id || item.phone === curr.phone);
+            if (match) {
+              return match;
+            }
+          }
+          return curr;
+        });
       }
     } catch {
       // offline fallback
     } finally {
       setIsLoadingConversations(false);
     }
-  }, [visible, activeTab, apiClient]);
+  }, [visible, activeTab, apiClient, initialPhone]);
 
-  // Load conversations on modal open or tab change
+  // Load conversations on modal open or tab change, and poll periodically
   useEffect(() => {
-    if (visible) {
+    if (!visible) return;
+    void loadConversations();
+    const interval = setInterval(() => {
       void loadConversations();
-    }
+    }, 6000);
+    return () => clearInterval(interval);
   }, [visible, activeTab, loadConversations]);
 
   // Handle initialPhone parameter (e.g. from POS Ticket or Sale Confirmation)
@@ -130,14 +148,16 @@ export function QuickMessagesModal({
     }
   }, [visible, conversations, selectedConversation, initialPhone]);
 
-  // 2. Load message history for selected conversation
+  // 2. Load message history for selected conversation with live polling
   useEffect(() => {
     if (!visible || !selectedConversation) return;
 
     let isMounted = true;
     const fetchHistory = async () => {
       try {
-        const res = await apiClient.getChatMessages(selectedConversation.id, activeTab);
+        const rawId = selectedConversation.id;
+        const targetId = activeTab === "WHATSAPP" ? rawId.replace(/\D/g, "") || rawId : rawId;
+        const res = await apiClient.getChatMessages(targetId, activeTab);
         if (res.ok && Array.isArray(res.data) && isMounted) {
           const serverMsgs: ChatMessageItem[] = res.data.map((m: any) => ({
             id: String(m.id),
@@ -160,10 +180,19 @@ export function QuickMessagesModal({
     };
 
     void fetchHistory();
+
+    // Auto-poll messages every 3.5 seconds so approvals and replies appear live
+    const pollTimer = setInterval(() => {
+      if (visible && isMounted) {
+        void fetchHistory();
+      }
+    }, 3500);
+
     return () => {
       isMounted = false;
+      clearInterval(pollTimer);
     };
-  }, [visible, selectedConversation, activeTab, apiClient]);
+  }, [visible, selectedConversation?.id, activeTab, apiClient]);
 
   const filteredConversations = useMemo(() => {
     if (!searchQuery.trim()) return conversations;
@@ -253,7 +282,15 @@ export function QuickMessagesModal({
                 <Text style={styles.mailIconEmoji}>✉️</Text>
               </View>
               <View>
-                <Text style={styles.headerTitle}>Mensajería Luxury & WhatsApp</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={styles.headerTitle}>Mensajería Luxury & WhatsApp</Text>
+                  <View style={styles.orgBadge}>
+                    <View style={styles.orgGreenDot} />
+                    <Text style={styles.orgBadgeText}>
+                      ORG: {activeOrgName}
+                    </Text>
+                  </View>
+                </View>
                 <Text style={styles.headerSubtitle}>
                   Comunicación directa con clientes y pasarela oficial PitayaCore
                 </Text>
@@ -261,6 +298,22 @@ export function QuickMessagesModal({
             </View>
 
             <View style={styles.headerRight}>
+              <TouchableOpacity
+                onPress={() => {
+                  void loadConversations();
+                  if (selectedConversation) {
+                    const rawId = selectedConversation.id;
+                    const targetId = activeTab === "WHATSAPP" ? rawId.replace(/\D/g, "") || rawId : rawId;
+                    void apiClient.getChatMessages(targetId, activeTab);
+                  }
+                }}
+                style={styles.refreshBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Actualizar mensajes"
+              >
+                <Text style={styles.refreshBtnText}>🔄 Actualizar</Text>
+              </TouchableOpacity>
+
               <View style={styles.activeServiceBadge}>
                 <View style={styles.greenPulseDot} />
                 <Text style={styles.activeServiceText}>Servicio Activo</Text>
@@ -414,40 +467,57 @@ export function QuickMessagesModal({
                     style={styles.messagesScroll}
                     contentContainerStyle={styles.messagesContainer}
                   >
-                    {activeMessages.map((msg) => {
-                      const isOutbound = msg.direction === "OUTBOUND";
-                      return (
-                        <View
-                          key={msg.id}
-                          style={[
-                            styles.messageRow,
-                            isOutbound ? styles.messageRowOutbound : styles.messageRowInbound,
-                          ]}
-                        >
+                    {activeMessages.length === 0 ? (
+                      <View style={styles.emptyMessagesBox}>
+                        <Text style={styles.emptyMessagesIcon}>💬</Text>
+                        <Text style={styles.emptyMessagesTitle}>Sin historial previo</Text>
+                        <Text style={styles.emptyMessagesSub}>
+                          Inicia una conversación o envía un recibo para chatear en tiempo real con este cliente.
+                        </Text>
+                      </View>
+                    ) : (
+                      activeMessages.map((msg) => {
+                        const isOutbound = msg.direction === "OUTBOUND";
+                        return (
                           <View
+                            key={msg.id}
                             style={[
-                              styles.messageBubble,
-                              isOutbound ? styles.bubbleOutbound : styles.bubbleInbound,
+                              styles.messageRow,
+                              isOutbound ? styles.messageRowOutbound : styles.messageRowInbound,
                             ]}
                           >
-                            <Text
+                            <View
                               style={[
-                                styles.messageContentText,
-                                isOutbound ? styles.contentOutbound : styles.contentInbound,
+                                styles.messageBubble,
+                                isOutbound ? styles.bubbleOutbound : styles.bubbleInbound,
                               ]}
                             >
-                              {msg.content}
-                            </Text>
-                            <View style={styles.bubbleMeta}>
-                              <Text style={styles.bubbleTime}>{msg.createdAt}</Text>
-                              {isOutbound && (
-                                <Text style={styles.checkDoneText}> ✓✓</Text>
-                              )}
+                              <Text
+                                style={[
+                                  styles.messageContentText,
+                                  isOutbound ? styles.contentOutbound : styles.contentInbound,
+                                ]}
+                              >
+                                {msg.content}
+                              </Text>
+                              <View style={styles.bubbleMeta}>
+                                <Text
+                                  style={[
+                                    styles.bubbleTime,
+                                    isOutbound ? styles.bubbleTimeOutbound : styles.bubbleTimeInbound,
+                                  ]}
+                                >
+                                  {msg.createdAt}
+                                </Text>
+                                {isOutbound && (
+                                  <Text style={styles.checkDoneText}> ✓✓</Text>
+                                )}
+                              </View>
                             </View>
                           </View>
-                        </View>
-                      );
-                    })}
+                        );
+                      })
+                    )}
                   </ScrollView>
 
                   {/* Message Composer Bar */}
@@ -839,28 +909,37 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   messageBubble: {
-    maxWidth: "75%",
+    maxWidth: "80%",
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
   },
   bubbleInbound: {
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: "#ffffff",
     borderTopLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.15)",
   },
   bubbleOutbound: {
-    backgroundColor: "#2563eb",
+    backgroundColor: "#059669",
     borderTopRightRadius: 4,
   },
   messageContentText: {
     fontSize: 13,
-    lineHeight: 18,
+    lineHeight: 19,
   },
   contentInbound: {
-    color: "#f1f5f9",
+    color: "#0f172a",
+    fontWeight: "500",
   },
   contentOutbound: {
     color: "#ffffff",
+    fontWeight: "500",
   },
   bubbleMeta: {
     flexDirection: "row",
@@ -869,13 +948,79 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   bubbleTime: {
-    color: "rgba(255, 255, 255, 0.6)",
     fontSize: 9,
+    fontWeight: "600",
+  },
+  bubbleTimeInbound: {
+    color: "#64748b",
+  },
+  bubbleTimeOutbound: {
+    color: "rgba(255, 255, 255, 0.75)",
   },
   checkDoneText: {
-    color: "#67e8f9",
+    color: "#a7f3d0",
     fontSize: 9,
     fontWeight: "800",
+  },
+  orgBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(16, 185, 129, 0.4)",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    gap: 5,
+  },
+  orgGreenDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#10b981",
+  },
+  orgBadgeText: {
+    color: "#6ee7b7",
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  refreshBtn: {
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.15)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  refreshBtnText: {
+    color: "#f8fafc",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  emptyMessagesBox: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+    paddingHorizontal: 24,
+  },
+  emptyMessagesIcon: {
+    fontSize: 40,
+    marginBottom: 12,
+  },
+  emptyMessagesTitle: {
+    color: "#f8fafc",
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 6,
+  },
+  emptyMessagesSub: {
+    color: IPAD_THEME.colors.textMuted,
+    fontSize: 13,
+    textAlign: "center",
+    maxWidth: 320,
+    lineHeight: 18,
   },
   composerBar: {
     flexDirection: "row",
