@@ -69,4 +69,6 @@ export interface SessionMeResponse {
     memberships: SessionMembership[];
   };
   organizations?: AuthOrganization[];
+  permissions?: Record<string, boolean> | null;
+  role?: string | null;
 }

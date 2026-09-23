@@ -93,6 +93,14 @@ enum RepairStatus {
   cancelled
 }
 
+enum DiscountAuthorizationStatus {
+  PENDING
+  APPROVED
+  PARTIAL
+  REJECTED
+  CANCELLED
+}
+
 model Organization {
   id                     String             @id @default(uuid())
   name                   String
@@ -137,6 +145,8 @@ model Organization {
   imeicheck2RequestLogs     ImeiCheck2RequestLog[]
   outgoingInventoryRequests InventoryTransferRequest[] @relation("InventoryTransferSourceOrg")
   incomingInventoryRequests InventoryTransferRequest[] @relation("InventoryTransferTargetOrg")
+  chatMessages              ChatMessage[]
+  discountAuthorizations    DiscountAuthorization[]
 }
 
 model ExternalIntegrationCredential {
@@ -200,6 +210,8 @@ model User {
   registerAudits         RegisterAudit[]
   assignedRepairTickets  RepairTicket[]      @relation("RepairAssignedTechnician")
   repairStatusLogs       RepairTicketStatusLog[]
+  discountRequestsCreated  DiscountAuthorization[] @relation("DiscountRequestedBy")
+  discountRequestsApproved DiscountAuthorization[] @relation("DiscountAuthorizedBy")
 }
 
 model EmailVerificationCode {
@@ -492,6 +504,7 @@ model Sale {
   customerId     String?
   saleNumber     String
   subtotal       Decimal  @db.Decimal(12, 2)
+  discount       Decimal  @default(0) @db.Decimal(12, 2)
   total          Decimal  @db.Decimal(12, 2)
   paymentMethod  String?
   notes          String?
@@ -505,6 +518,7 @@ model Sale {
   inventoryTransferRequests InventoryTransferRequest[]
   creditLedger              CreditLedger[]
   completedRepairs          RepairTicket[]
+  discountAuthorizations    DiscountAuthorization[]
 
   @@unique([organizationId, saleNumber])
   @@index([organizationId, createdAt])
@@ -747,4 +761,56 @@ model SystemSetting {
   value     String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model ChatMessage {
+  id                String   @id @default(uuid())
+  organizationId    String
+  channel           String   @default("WHATSAPP") // "WHATSAPP" | "INTERNAL"
+  conversationId    String   // phone number for WhatsApp, user ID/room for Internal
+  senderId          String?
+  senderName        String?
+  recipientPhone    String?
+  recipientName     String?
+  recipientUserId   String?
+  content           String   @db.Text
+  direction         String   @default("OUTBOUND") // "OUTBOUND" | "INBOUND"
+  status            String   @default("SENT")     // "SENT" | "DELIVERED" | "READ" | "FAILED"
+  mediaUrl          String?  @db.Text
+  providerMessageId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, channel, conversationId, createdAt])
+  @@index([organizationId, channel, createdAt])
+}
+
+model DiscountAuthorization {
+  id                 String                      @id @default(uuid())
+  organizationId     String
+  draftSaleId        String
+  completedSaleId    String?
+  requestedByUserId  String
+  authorizedByUserId String?
+  status             DiscountAuthorizationStatus @default(PENDING)
+  requestedDiscount  Decimal                     @db.Decimal(12, 2)
+  approvedDiscount   Decimal                     @default(0) @db.Decimal(12, 2)
+  reason             String
+  responseNote       String?
+  snapshotJson       Json
+  createdAt          DateTime                    @default(now())
+  respondedAt        DateTime?
+  updatedAt          DateTime                    @updatedAt
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedBy   User         @relation("DiscountRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Cascade)
+  authorizedBy  User?        @relation("DiscountAuthorizedBy", fields: [authorizedByUserId], references: [id], onDelete: SetNull)
+  completedSale Sale?        @relation(fields: [completedSaleId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, createdAt])
+  @@index([requestedByUserId, createdAt])
+  @@index([draftSaleId])
+  @@index([completedSaleId])
 }

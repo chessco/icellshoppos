@@ -36,6 +36,8 @@ type SaleCreatePayload = {
   paymentBreakdown?: Record<string, number | string>;
   notes?: string;
   soldBy?: string;
+  authorizationId?: string;
+  discount?: number;
   items: SaleItemInput[];
 };
 
@@ -130,6 +132,9 @@ export async function GET(request: NextRequest) {
       paymentMethod: sale.paymentMethod ?? "",
       notes: sale.notes ?? "",
       soldBy: sale.soldBy ?? "",
+      subtotal: sale.subtotal.toString(),
+      discount: (sale.discount || 0).toString(),
+      total: sale.total.toString(),
       lines: sale.items.map((item) => ({
         id: item.id,
         imei: item.imei,
@@ -316,6 +321,75 @@ export async function POST(request: NextRequest) {
 
     const saleNumber = requestedSaleId || `S-${Date.now()}`;
     const subtotal = body.items.reduce((sum, item) => sum + parseNumber(item.salePrice), 0);
+    let discount = 0;
+    let validatedAuthorizationId: string | null = null;
+
+    if (body.authorizationId) {
+      const auth = await db.discountAuthorization.findFirst({
+        where: {
+          id: body.authorizationId,
+          organizationId,
+        },
+      });
+
+      if (!auth) {
+        return NextResponse.json(
+          { error: "Autorización de descuento no encontrada o no pertenece a esta organización." },
+          { status: 400 }
+        );
+      }
+
+      // REGLA 2 & 3: PENDING or REJECTED cannot finalize sale with discount
+      if (auth.status !== "APPROVED" && auth.status !== "PARTIAL") {
+        return NextResponse.json(
+          {
+            error: `La autorización se encuentra en estado ${auth.status} y no permite finalizar la venta con descuento.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      if (auth.completedSaleId) {
+        return NextResponse.json(
+          { error: "Esta autorización de descuento ya fue utilizada en otra venta." },
+          { status: 400 }
+        );
+      }
+
+      // REGLA 8: Vinculada a una venta concreta
+      if (auth.draftSaleId && requestedSaleId && auth.draftSaleId !== requestedSaleId) {
+        return NextResponse.json(
+          { error: "La autorización no corresponde al identificador de esta venta." },
+          { status: 400 }
+        );
+      }
+
+      const approvedDiscount = Number(auth.approvedDiscount);
+      const appliedDiscount = body.discount !== undefined ? Number(body.discount) : approvedDiscount;
+
+      // REGLA 6: Si se autorizaron $300, el vendedor NO puede aplicar más de $300
+      if (appliedDiscount > approvedDiscount) {
+        return NextResponse.json(
+          {
+            error: `El descuento aplicado ($${appliedDiscount}) excede el descuento autorizado ($${approvedDiscount}).`,
+          },
+          { status: 400 }
+        );
+      }
+
+      discount = Math.min(appliedDiscount, approvedDiscount);
+      validatedAuthorizationId = auth.id;
+    } else if (body.discount && Number(body.discount) > 0) {
+      if (!permissions.canApproveDiscounts) {
+        return NextResponse.json(
+          { error: "Se requiere autorización para aplicar descuentos a esta venta." },
+          { status: 403 }
+        );
+      }
+      discount = Number(body.discount);
+    }
+
+    const total = Math.max(0, subtotal - discount);
     let customerId: string | null = null;
 
     const currentUser = await db.user.findUnique({
@@ -388,12 +462,22 @@ export async function POST(request: NextRequest) {
           customerId,
           saleNumber,
           subtotal,
-          total: subtotal,
+          discount,
+          total,
           paymentMethod,
           notes: body.notes?.trim() || null,
           soldBy: soldByName,
         },
       });
+
+      if (validatedAuthorizationId) {
+        await transaction.discountAuthorization.update({
+          where: { id: validatedAuthorizationId },
+          data: {
+            completedSaleId: createdSale.id,
+          },
+        });
+      }
 
       const saleItemsData = body.items.map((item) => {
         const inventoryItem =
@@ -564,7 +648,9 @@ export async function POST(request: NextRequest) {
       meta: {
         saleNumber: sale.saleNumber,
         subtotal: sale.subtotal,
+        discount: sale.discount,
         total: sale.total,
+        authorizationId: validatedAuthorizationId,
         paymentMethod: sale.paymentMethod,
         notes: sale.notes,
         soldBy: sale.soldBy,

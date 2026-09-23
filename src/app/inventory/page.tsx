@@ -399,6 +399,7 @@ export default function InventoryPage() {
   const [renderedLabelsForPrint, setRenderedLabelsForPrint] = useState<Map<string, RenderedLabelPayload>>(new Map());
   const [pendingPrintImeis, setPendingPrintImeis] = useState<string[] | null>(null);
   const [isSuperadmin, setIsSuperadmin] = useState(false);
+  const [canViewCostAndMargin, setCanViewCostAndMargin] = useState(false);
   const [organizations, setOrganizations] = useState<SessionOrganization[]>([]);
   const [activeOrganizationId, setActiveOrganizationId] = useState("");
   const [exportFromDate, setExportFromDate] = useState("");
@@ -777,14 +778,20 @@ export default function InventoryPage() {
         const session = payload?.session as { isSuperadmin?: boolean; activeOrganizationId?: string } | undefined;
         const orgList = Array.isArray(payload?.organizations) ? payload.organizations : [];
 
+        const isSuper = Boolean(session?.isSuperadmin);
+        const role = payload?.role || (session as { role?: string } | undefined)?.role;
+        const hasCostMarginPerm = (payload?.permissions as Record<string, boolean> | undefined)?.canViewCostAndMargin === true;
+
         if (!cancelled) {
-          setIsSuperadmin(Boolean(session?.isSuperadmin));
+          setIsSuperadmin(isSuper);
+          setCanViewCostAndMargin(isSuper || role === "superadmin" || role === "admin" || hasCostMarginPerm);
           setOrganizations(orgList);
           setActiveOrganizationId(String(session?.activeOrganizationId ?? ""));
         }
       } catch {
         if (!cancelled) {
           setIsSuperadmin(false);
+          setCanViewCostAndMargin(false);
         }
       }
     };
@@ -1791,6 +1798,7 @@ export default function InventoryPage() {
           {(() => {
             const visibleHeaders = headers
               .filter(h => useUsdConversion || (h !== "Cost USD" && h !== "USD Rate"))
+              .filter(h => canViewCostAndMargin || (h !== "Cost" && h !== "Currency" && h !== "Cost USD" && h !== "USD Rate"))
               .filter(h => !hiddenColumns.has(h));
             return (
           <table className="min-w-max w-full text-left text-sm">

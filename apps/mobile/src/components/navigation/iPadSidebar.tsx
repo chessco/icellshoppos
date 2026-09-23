@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { IPAD_THEME } from "../../theme/tokens";
 import { useAuth } from "../../contexts/AuthContext";
 
-export type NavigationDestination = "pos" | "inventory" | "sales" | "settings";
+export type NavigationDestination = "pos" | "inventory" | "sales" | "commissions" | "messages" | "settings";
 
 interface NavigationItem {
   id: NavigationDestination;
@@ -16,6 +16,8 @@ const NAV_ITEMS: NavigationItem[] = [
   { id: "pos", title: "Point of Sale", icon: "💳" },
   { id: "inventory", title: "Inventory", icon: "📦" },
   { id: "sales", title: "Sales History", icon: "🧾" },
+  { id: "commissions", title: "Comisiones", icon: "💰" },
+  { id: "messages", title: "Mensajería", icon: "✉️" },
   { id: "settings", title: "Settings", icon: "⚙️" },
 ];
 
@@ -24,6 +26,7 @@ interface IPadSidebarProps {
   onSelectTab: (tab: NavigationDestination) => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  onClose?: () => void;
 }
 
 export function IPadSidebar({
@@ -31,8 +34,20 @@ export function IPadSidebar({
   onSelectTab,
   isCollapsed = false,
   onToggleCollapse,
+  onClose,
 }: IPadSidebarProps) {
   const { session, logout } = useAuth();
+
+  const activeMembership =
+    session?.memberships?.find((m) => m.organizationId === session?.activeOrganizationId) ||
+    session?.memberships?.[0];
+  const role = session?.isSuperadmin ? "superadmin" : (activeMembership?.role || "staff");
+  const canManageCommissions = role === "admin" || role === "superadmin";
+
+  const visibleNavItems = NAV_ITEMS.filter((item) => {
+    if (item.id === "commissions" && !canManageCommissions) return false;
+    return true;
+  });
 
   return (
     <View style={[styles.container, isCollapsed && styles.containerCollapsed]}>
@@ -47,11 +62,21 @@ export function IPadSidebar({
             <Text style={styles.appSub}>Pro Buyer POS</Text>
           </View>
         )}
+        {!isCollapsed && onClose && (
+          <TouchableOpacity
+            style={styles.closeDrawerBtn}
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Cerrar navegación"
+          >
+            <Text style={styles.closeDrawerBtnText}>✕</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Navigation List */}
       <View style={styles.navSection}>
-        {NAV_ITEMS.map((item) => {
+        {visibleNavItems.map((item) => {
           const isActive = currentTab === item.id;
           return (
             <TouchableOpacity
@@ -109,6 +134,8 @@ export function IPadSidebar({
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+    height: "100%",
     width: IPAD_THEME.sidebar.expandedWidth,
     backgroundColor: IPAD_THEME.colors.sidebarBackground,
     borderRightWidth: 1,
@@ -160,6 +187,20 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textTransform: "uppercase",
   },
+  closeDrawerBtn: {
+    marginLeft: "auto",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  closeDrawerBtnText: {
+    color: IPAD_THEME.colors.textSecondary,
+    fontSize: 14,
+    fontWeight: "700",
+  },
   navSection: {
     flex: 1,
     paddingVertical: IPAD_THEME.spacing.lg,
@@ -207,6 +248,7 @@ const styles = StyleSheet.create({
     right: 8,
   },
   footer: {
+    marginTop: "auto",
     padding: IPAD_THEME.spacing.md,
     borderTopWidth: 1,
     borderTopColor: "rgba(255, 255, 255, 0.05)",

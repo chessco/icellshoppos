@@ -115,7 +115,7 @@ export function ProductDetailPane({
           title={inCart ? "Remove from POS Cart" : "Add to POS Cart"}
           variant={inCart ? "danger" : "primary"}
           size="lg"
-          onPress={() => (inCart ? removeItem(item.id) : addItem(item))}
+          onPress={() => (inCart ? onRemoveFromCart(item.id) : onAddToCart(item))}
           accessibilityLabel={inCart ? "Remove from POS Cart" : "Add to POS Cart"}
         />
       </View>

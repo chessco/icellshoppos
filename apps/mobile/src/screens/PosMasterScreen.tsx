@@ -24,16 +24,18 @@ interface PosMasterScreenProps {
   connectivityState: ConnectivityState;
   onRefreshConnectivity: () => void;
   scannerStatus: string;
+  onOpenMessages?: () => void;
 }
 
 export function PosMasterScreen({
   connectivityState,
   onRefreshConnectivity,
   scannerStatus,
+  onOpenMessages,
 }: PosMasterScreenProps) {
   const { width } = useWindowDimensions();
   const { apiClient } = useAuth();
-  const { items: cartItems } = useCart();
+  const { items: cartItems, addItem, removeItem } = useCart();
   const { layoutMode } = usePosLayout();
 
   const [inventory, setInventory] = useState<IInventoryListItem[]>([]);
@@ -60,9 +62,12 @@ export function PosMasterScreen({
     try {
       const res = await inventoryService.loadInventory("Available");
       if (res.ok) {
-        setInventory(res.items);
-        if (res.items.length > 0 && !selectedItem) {
-          setSelectedItem(res.items[0]);
+        const availableItems = (res.items || []).filter(
+          (item) => (item.status || "Available").toLowerCase() === "available"
+        );
+        setInventory(availableItems);
+        if (availableItems.length > 0 && !selectedItem) {
+          setSelectedItem(availableItems[0]);
         }
       } else {
         setErrorMessage(res.error || "Failed to load store inventory");
@@ -151,14 +156,17 @@ export function PosMasterScreen({
     );
   }
 
-  const isWide = width >= IPAD_THEME.breakpoints.regular;
+  // In iPad portrait (width ~768-834px) as well as landscape (width >= 1024px),
+  // we maintain full-height dual columns to prevent ticket compression.
+  // Stacked mode is only reserved for ultra-compact phone screens (< 600px).
+  const isTablet = width >= 600;
 
   return (
     <View style={styles.container}>
       {layoutMode === "apple_touch" ? (
         /* ─────────────── APPLE TOUCH POS MODE ─────────────── */
-        <View style={[styles.layout, !isWide && styles.layoutStacked]}>
-          {/* Left Column: Tactile Product Grid (60%) */}
+        <View style={[styles.layout, !isTablet && styles.layoutStacked]}>
+          {/* Left Column: Tactile Product Grid (58%) */}
           <View style={styles.appleCatalogColumn}>
             <AppleTouchPosView
               items={inventory}
@@ -166,10 +174,11 @@ export function PosMasterScreen({
               errorMessage={errorMessage}
               onRefresh={loadInventoryData}
               onOpenScanner={() => setIsScannerOpen(true)}
+              onOpenMessages={onOpenMessages}
             />
           </View>
 
-          {/* Right Column: Apple Live Receipt Ticket (40%) */}
+          {/* Right Column: Apple Live Receipt Ticket (42%) */}
           <View style={styles.appleTicketColumn}>
             <AppleReceiptTicket
               onProceedCheckout={() => setViewMode("checkout")}
@@ -180,7 +189,7 @@ export function PosMasterScreen({
         </View>
       ) : (
         /* ─────────────── CLASSIC WEB CATALOG MODE ─────────────── */
-        <View style={[styles.layout, !isWide && styles.layoutStacked]}>
+        <View style={[styles.layout, !isTablet && styles.layoutStacked]}>
           {/* Left Column: Product Catalog & Search */}
           <View style={styles.catalogColumn}>
             <CatalogGrid
@@ -203,7 +212,11 @@ export function PosMasterScreen({
           <View style={styles.rightColumn}>
             {activeRightTab === "detail" && selectedItem ? (
               <View style={styles.detailWrapper}>
-                <ProductDetailPane item={selectedItem} />
+                <ProductDetailPane
+                  item={selectedItem}
+                  onAddToCart={addItem}
+                  onRemoveFromCart={removeItem}
+                />
               </View>
             ) : (
               <CartDrawer
@@ -257,12 +270,13 @@ const styles = StyleSheet.create({
     flex: 42,
     backgroundColor: IPAD_THEME.colors.surfacePrimary,
   },
-  // Apple Touch layout dimensions
+  // Apple Touch layout dimensions (58% Catalog, 42% Ticket)
+  // Perfectly balanced for iPad Vertical (e.g. ~460px / ~340px at 800px width)
   appleCatalogColumn: {
-    flex: 62,
+    flex: 58,
   },
   appleTicketColumn: {
-    flex: 38,
+    flex: 42,
   },
   detailWrapper: {
     flex: 1,

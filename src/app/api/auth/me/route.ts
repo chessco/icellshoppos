@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
         });
 
     let permissions: Record<string, boolean> | null = null;
+    let currentRole: string | null = null;
     if (session.activeOrganizationId) {
       const membership = await db.membership.findUnique({
         where: {
@@ -81,19 +82,25 @@ export async function GET(request: NextRequest) {
       });
 
       if (membership) {
+        currentRole = membership.role;
         permissions = resolveEffectivePermissions(
           membership.role as "superadmin" | "admin" | "staff",
           membership.permissionsJson
         );
       } else if (session.isSuperadmin) {
+        currentRole = "superadmin";
         permissions = resolveEffectivePermissions("superadmin", {});
       }
+    } else if (session.isSuperadmin) {
+      currentRole = "superadmin";
+      permissions = resolveEffectivePermissions("superadmin", {});
     }
 
     return NextResponse.json({
       session,
       organizations,
       permissions,
+      role: currentRole,
     });
   } catch (error) {
     return NextResponse.json(

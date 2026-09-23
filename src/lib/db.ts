@@ -15,12 +15,39 @@ if (/(user:password@host:5432|@host:5432|@HOST:5432)/.test(databaseUrl)) {
   );
 }
 
-export const db =
-  globalThis.prisma ??
-  new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
-  });
+function getPrismaClient(): PrismaClient {
+  // If running in development and the cached global prisma client is missing newly generated models,
+  // invalidate it so it reloads with the latest PrismaClient definition.
+  if (
+    globalThis.prisma &&
+    process.env.NODE_ENV === "development" &&
+    !("discountAuthorization" in (globalThis.prisma as unknown as Record<string, unknown>))
+  ) {
+    try {
+      (globalThis.prisma as any).$disconnect?.();
+    } catch {
+      // ignore
+    }
+    globalThis.prisma = undefined;
+  }
 
-if (process.env.NODE_ENV !== "production") {
-  globalThis.prisma = db;
+  if (!globalThis.prisma) {
+    globalThis.prisma = new PrismaClient({
+      log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
+    });
+  }
+
+  return globalThis.prisma;
 }
+
+export const db: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    const client = getPrismaClient();
+    const val = (client as any)[prop];
+    if (typeof val === "function") {
+      return val.bind(client);
+    }
+    return val;
+  },
+});
+

@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 
 interface AuditLogParams {
+  organizationId?: string;
   actorUserId: string;
   action: string;
   entity: string;
@@ -8,9 +9,10 @@ interface AuditLogParams {
   meta?: any;
 }
 
-export async function logAudit({ actorUserId, action, entity, entityId, meta }: AuditLogParams) {
+export async function logAudit({ organizationId, actorUserId, action, entity, entityId, meta }: AuditLogParams) {
   return prisma.auditLog.create({
     data: {
+      organizationId,
       actorUserId,
       action,
       entity,

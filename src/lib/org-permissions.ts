@@ -13,6 +13,9 @@ export const ORG_PERMISSION_KEYS = [
   "canImportInventoryUpdates",
   "canManageRepairs",
   "canManageTeam",
+  "canManageCommissions",
+  "canViewCostAndMargin",
+  "canApproveDiscounts",
 ] as const;
 
 export type OrgPermissionKey = (typeof ORG_PERMISSION_KEYS)[number];
@@ -33,6 +36,9 @@ const DEFAULT_PERMISSIONS_BY_ROLE: Record<OrgRole, OrgPermissions> = {
     canImportInventoryUpdates: true,
     canManageRepairs: true,
     canManageTeam: true,
+    canManageCommissions: true,
+    canViewCostAndMargin: true,
+    canApproveDiscounts: true,
   },
   admin: {
     canDeleteInventory: true,
@@ -45,6 +51,9 @@ const DEFAULT_PERMISSIONS_BY_ROLE: Record<OrgRole, OrgPermissions> = {
     canImportInventoryUpdates: true,
     canManageRepairs: true,
     canManageTeam: true,
+    canManageCommissions: true,
+    canViewCostAndMargin: true,
+    canApproveDiscounts: true,
   },
   staff: {
     canDeleteInventory: false,
@@ -57,6 +66,9 @@ const DEFAULT_PERMISSIONS_BY_ROLE: Record<OrgRole, OrgPermissions> = {
     canImportInventoryUpdates: false,
     canManageRepairs: false,
     canManageTeam: false,
+    canManageCommissions: false,
+    canViewCostAndMargin: false,
+    canApproveDiscounts: false,
   },
 };
 

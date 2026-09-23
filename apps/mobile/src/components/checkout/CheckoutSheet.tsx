@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { useAuth } from "../../contexts/AuthContext";
 import { useCart } from "../../contexts/CartContext";
+import { useCommission } from "../../contexts/CommissionContext";
 import { CheckoutApplicationService, normalizeWhatsappPhone } from "@ireader/application";
 import type { BackendSaleCreatedResponse } from "@ireader/contracts";
 import { IPAD_THEME } from "../../theme/tokens";
@@ -60,6 +61,11 @@ export function CheckoutSheet({
     totalPreview,
     clearCart,
   } = useCart();
+  const { activeSeller, calculateEstimate, recordSale } = useCommission();
+
+  const commissionSummary = React.useMemo(() => {
+    return calculateEstimate(items);
+  }, [calculateEstimate, items]);
 
   // Logical checkout operation idempotency key (generated once per checkout session, reused on retries)
   const checkoutIdRef = React.useRef<string>(generateUUID());
@@ -118,7 +124,7 @@ export function CheckoutSheet({
       paymentMethod,
       paymentBreakdown: { [paymentMethod]: totalPreview },
       notes: notes.trim() || undefined,
-      soldBy: session?.email || "iPad POS",
+      soldBy: activeSeller.name || session?.email || "iPad POS",
       items: items.map((i) => ({
         inventoryItemId: i.inventoryItem.id,
         imei: i.inventoryItem.imei || i.inventoryItem.serialNumber || i.inventoryItem.id,
@@ -132,6 +138,9 @@ export function CheckoutSheet({
         setErrorMessage(res.error || "Failed to process sale on server.");
         return;
       }
+
+      // Registrar la comisión de esta venta en el historial local del vendedor
+      void recordSale(res.data.saleId || checkoutIdRef.current, res.data.saleNumber, items);
 
       // Print thermal receipt stub asynchronously (separate failure boundary)
       void printerService.printReceipt({
@@ -276,6 +285,25 @@ export function CheckoutSheet({
                 keyboardType="email-address"
                 autoCapitalize="none"
               />
+            </View>
+          </View>
+
+          {/* Seller / Commission Assignment */}
+          <View style={styles.card}>
+            <View style={styles.sellerHeaderRow}>
+              <View>
+                <Text style={styles.cardHeader}>Vendedor Asignado</Text>
+                <Text style={styles.sellerNameDisplay}>
+                  {activeSeller.name} ({activeSeller.role || "Vendedor"})
+                </Text>
+              </View>
+              {commissionSummary.totalCommission > 0 && (
+                <View style={styles.commissionPill}>
+                  <Text style={styles.commissionPillText}>
+                    💰 Comisión: +{formatCurrency(commissionSummary.totalCommission)} MXN
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
 
@@ -540,5 +568,29 @@ const styles = StyleSheet.create({
   },
   completeBtn: {
     marginTop: IPAD_THEME.spacing.sm,
+  },
+  sellerHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  sellerNameDisplay: {
+    color: IPAD_THEME.colors.textPrimary,
+    fontSize: 14,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+  commissionPill: {
+    backgroundColor: "rgba(56, 189, 248, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.25)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: IPAD_THEME.radius.full,
+  },
+  commissionPillText: {
+    color: "#38bdf8",
+    fontSize: 11,
+    fontWeight: "800",
   },
 });

@@ -5,6 +5,7 @@ import {
   FlatList,
   ActivityIndicator,
   StyleSheet,
+  TouchableOpacity,
 } from "react-native";
 import { useAuth } from "../contexts/AuthContext";
 import { InventoryApplicationService } from "@ireader/application";
@@ -14,9 +15,24 @@ import { SearchBar } from "../components/ui/SearchBar";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 
+export type InventoryStatusFilter = "Available" | "All" | "Sold";
+
+interface StatusOption {
+  id: InventoryStatusFilter;
+  label: string;
+  icon: string;
+}
+
+const STATUS_OPTIONS: StatusOption[] = [
+  { id: "Available", label: "Disponible", icon: "✨" },
+  { id: "All", label: "Todos", icon: "📋" },
+  { id: "Sold", label: "Vendido", icon: "🏷️" },
+];
+
 export function InventoryScreen() {
   const { apiClient } = useAuth();
   const [items, setItems] = useState<IInventoryListItem[]>([]);
+  const [statusFilter, setStatusFilter] = useState<InventoryStatusFilter>("Available");
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -26,11 +42,12 @@ export function InventoryScreen() {
     [apiClient]
   );
 
-  const loadData = async () => {
+  const loadData = async (filterToUse: InventoryStatusFilter = statusFilter) => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const res = await inventoryService.loadInventory();
+      const statusParam = filterToUse === "All" ? undefined : filterToUse;
+      const res = await inventoryService.loadInventory(statusParam);
       if (res.ok) {
         setItems(res.items);
       } else {
@@ -44,19 +61,34 @@ export function InventoryScreen() {
   };
 
   useEffect(() => {
-    void loadData();
-  }, []);
+    void loadData(statusFilter);
+  }, [statusFilter]);
 
   const filteredItems = useMemo(() => {
+    let result = items;
+
+    if (statusFilter === "Available") {
+      result = result.filter(
+        (i) => (i.status || "Available").toLowerCase() === "available"
+      );
+    } else if (statusFilter === "Sold") {
+      result = result.filter(
+        (i) => (i.status || "").toLowerCase() === "sold"
+      );
+    }
+
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return items;
-    return items.filter((i) => {
-      const model = i.model?.toLowerCase() || "";
-      const imei = i.imei || "";
-      const serial = i.serialNumber?.toLowerCase() || "";
-      return model.includes(q) || imei.includes(q) || serial.includes(q);
-    });
-  }, [items, searchQuery]);
+    if (q) {
+      result = result.filter((i) => {
+        const model = i.model?.toLowerCase() || "";
+        const imei = i.imei || "";
+        const serial = i.serialNumber?.toLowerCase() || "";
+        const sku = i.sku?.toLowerCase() || "";
+        return model.includes(q) || imei.includes(q) || serial.includes(q) || sku.includes(q);
+      });
+    }
+    return result;
+  }, [items, searchQuery, statusFilter]);
 
   return (
     <View style={styles.container}>
@@ -71,8 +103,35 @@ export function InventoryScreen() {
         <Button
           title="↻ Refresh"
           variant="secondary"
-          onPress={loadData}
+          onPress={() => loadData(statusFilter)}
         />
+      </View>
+
+      {/* Filter Chips: Default is "Disponible" */}
+      <View style={styles.filterSection}>
+        {STATUS_OPTIONS.map((opt) => {
+          const isActive = statusFilter === opt.id;
+          return (
+            <TouchableOpacity
+              key={opt.id}
+              style={[styles.filterChip, isActive && styles.filterChipActive]}
+              onPress={() => setStatusFilter(opt.id)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Filtro ${opt.label}`}
+            >
+              <Text style={styles.filterIcon}>{opt.icon}</Text>
+              <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                {opt.label}
+              </Text>
+              {isActive && (
+                <View style={styles.badgeCount}>
+                  <Text style={styles.badgeCountText}>{filteredItems.length}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       {isLoading ? (
@@ -83,7 +142,7 @@ export function InventoryScreen() {
       ) : errorMessage ? (
         <View style={styles.center}>
           <Text style={styles.errorText}>{errorMessage}</Text>
-          <Button title="Retry" variant="primary" onPress={loadData} />
+          <Button title="Retry" variant="primary" onPress={() => loadData(statusFilter)} />
         </View>
       ) : (
         <FlatList
@@ -113,6 +172,25 @@ export function InventoryScreen() {
               </View>
             </View>
           )}
+          ListEmptyComponent={
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyIcon}>📦</Text>
+              <Text style={styles.emptyTitle}>
+                {statusFilter === "Available"
+                  ? "No hay productos disponibles"
+                  : statusFilter === "Sold"
+                  ? "No hay productos vendidos"
+                  : "No se encontraron registros"}
+              </Text>
+              <Text style={styles.emptySubtitle}>
+                {searchQuery
+                  ? `No se encontraron coincidencias para "${searchQuery}".`
+                  : statusFilter === "Available"
+                  ? "Todos los equipos se encuentran vendidos o en otro estado."
+                  : "No hay equipos registrados en esta vista."}
+              </Text>
+            </View>
+          }
         />
       )}
     </View>
@@ -197,5 +275,68 @@ const styles = StyleSheet.create({
   errorText: {
     color: IPAD_THEME.colors.danger,
     marginBottom: IPAD_THEME.spacing.md,
+  },
+  filterSection: {
+    flexDirection: "row",
+    gap: IPAD_THEME.spacing.sm,
+    marginBottom: IPAD_THEME.spacing.md,
+  },
+  filterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: IPAD_THEME.spacing.md,
+    paddingVertical: 8,
+    borderRadius: IPAD_THEME.radius.full,
+    backgroundColor: IPAD_THEME.colors.surfacePrimary,
+    borderWidth: 1,
+    borderColor: IPAD_THEME.colors.borderSubtle,
+    gap: 6,
+  },
+  filterChipActive: {
+    backgroundColor: IPAD_THEME.colors.accent,
+    borderColor: IPAD_THEME.colors.accent,
+  },
+  filterIcon: {
+    fontSize: 13,
+  },
+  filterChipText: {
+    color: IPAD_THEME.colors.textSecondary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  filterChipTextActive: {
+    color: "#080c14",
+    fontWeight: "800",
+  },
+  badgeCount: {
+    backgroundColor: "rgba(8, 12, 20, 0.18)",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 10,
+  },
+  badgeCountText: {
+    color: "#080c14",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  emptyBox: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: IPAD_THEME.spacing.xxl,
+  },
+  emptyIcon: {
+    fontSize: 40,
+    marginBottom: IPAD_THEME.spacing.sm,
+  },
+  emptyTitle: {
+    color: IPAD_THEME.colors.textPrimary,
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  emptySubtitle: {
+    color: IPAD_THEME.colors.textMuted,
+    fontSize: 13,
+    textAlign: "center",
   },
 });

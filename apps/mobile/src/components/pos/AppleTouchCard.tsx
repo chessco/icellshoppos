@@ -1,113 +1,131 @@
 import React, { useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from "react-native";
-import type { IInventoryListItem } from "@ireader/contracts";
+import type { AppleModelGroup } from "../../utils/appleCatalogGrouping";
 import { IPAD_THEME } from "../../theme/tokens";
 import { useCart } from "../../contexts/CartContext";
-
 import { formatCurrency } from "../../utils/formatters";
 
 interface AppleTouchCardProps {
-  item: IInventoryListItem;
+  group: AppleModelGroup;
+  onPressGroup: (group: AppleModelGroup) => void;
 }
 
-export function AppleTouchCard({ item }: AppleTouchCardProps) {
-  const { items: cartItems, addItem } = useCart();
+export function AppleTouchCard({ group, onPressGroup }: AppleTouchCardProps) {
+  const { items: cartItems } = useCart();
   const [pulseAnim] = useState(new Animated.Value(1));
 
-  // Determine how many of this item are currently in the cart
-  const inCartCount = cartItems.filter((ci) => ci.inventoryItem.id === item.id).length;
+  if (!group || !group.modelKey) {
+    return null;
+  }
+
+  // Determinar cuántas unidades de este modelo ya están en el ticket
+  const inCartCount = (cartItems || []).filter(
+    (ci) => (ci?.inventoryItem?.model || "").toLowerCase() === group.modelKey
+  ).length;
 
   const handlePress = () => {
-    // Quick tactile pulse animation
+    // Animación táctil suave
     Animated.sequence([
-      Animated.timing(pulseAnim, { toValue: 0.94, duration: 80, useNativeDriver: true }),
-      Animated.timing(pulseAnim, { toValue: 1, duration: 120, useNativeDriver: true }),
+      Animated.timing(pulseAnim, { toValue: 0.95, duration: 70, useNativeDriver: true }),
+      Animated.timing(pulseAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
     ]).start();
 
-    addItem(item);
+    onPressGroup(group);
   };
 
   const getDeviceIcon = () => {
-    const modelLower = (item.model || "").toLowerCase();
-    if (modelLower.includes("iphone")) return "📱";
-    if (modelLower.includes("ipad")) return "📟";
-    if (modelLower.includes("mac") || modelLower.includes("imac") || modelLower.includes("book")) return "💻";
-    if (modelLower.includes("watch")) return "⌚";
-    if (modelLower.includes("airpod") || modelLower.includes("headphone") || modelLower.includes("case")) return "🎧";
-    return "📦";
+    switch (group.deviceType) {
+      case "iphone":
+        return "📱";
+      case "ipad":
+        return "📟";
+      case "mac":
+        return "💻";
+      case "watch":
+        return "⌚";
+      default:
+        return "📦";
+    }
   };
 
-  // Safe price number format (Hermes-compatible)
-  const formattedPrice = formatCurrency(item.price);
-
-  const displayCapacity = item.capacity || item.storageSize;
+  const formattedMinPrice = formatCurrency(group.minPrice);
 
   return (
     <Animated.View style={[styles.wrapper, { transform: [{ scale: pulseAnim }] }]}>
       <TouchableOpacity
-        style={[
-          styles.card,
-          inCartCount > 0 && styles.cardActiveInCart,
-        ]}
+        style={[styles.card, inCartCount > 0 && styles.cardActiveInCart]}
         onPress={handlePress}
-        activeOpacity={0.72}
+        activeOpacity={0.75}
         accessibilityRole="button"
-        accessibilityLabel={`${item.model}, ${displayCapacity || ""}, ${formattedPrice}. Toca para agregar.`}
+        accessibilityLabel={`${group.modelName}, ${group.totalAvailable} disponibles, desde ${formattedMinPrice}. Toca para configurar.`}
       >
-        {/* Top Badges Row */}
+        {/* Fila Superior: Badges y Estado */}
         <View style={styles.topRow}>
-          <View style={styles.deviceIconBadge}>
-            <Text style={styles.deviceIconText}>{getDeviceIcon()}</Text>
+          <View style={styles.topLeft}>
+            <View style={styles.deviceIconBadge}>
+              <Text style={styles.deviceIconText}>{getDeviceIcon()}</Text>
+            </View>
+            {group.isBestseller && (
+              <View style={styles.bestsellerBadge}>
+                <Text style={styles.bestsellerBadgeText}>
+                  {group.bestsellerBadgeText || "⭐ MÁS VENDIDO"}
+                </Text>
+              </View>
+            )}
           </View>
 
-          {inCartCount > 0 ? (
-            <View style={styles.inCartBadge}>
-              <Text style={styles.inCartText}>✓ {inCartCount}</Text>
-            </View>
-          ) : item.grade ? (
-            <View style={styles.gradeBadge}>
-              <Text style={styles.gradeText}>{item.grade.toUpperCase()}</Text>
-            </View>
-          ) : null}
+          <View style={styles.topRight}>
+            {inCartCount > 0 ? (
+              <View style={styles.inCartBadge}>
+                <Text style={styles.inCartText}>✓ {inCartCount} en ticket</Text>
+              </View>
+            ) : (
+              <View style={styles.stockBadge}>
+                <Text style={styles.stockText}>{group.totalAvailable} disp.</Text>
+              </View>
+            )}
+          </View>
         </View>
 
-        {/* Model Title */}
+        {/* Título del Modelo */}
         <Text style={styles.modelTitle} numberOfLines={2}>
-          {item.model}
+          {group.modelName}
         </Text>
 
-        {/* Specifications Pills */}
-        <View style={styles.specPillsContainer}>
-          {Boolean(displayCapacity) && (
-            <View style={styles.specPill}>
-              <Text style={styles.specPillText}>{displayCapacity}</Text>
-            </View>
+        {/* Fila de Muestras de Color Oficiales (Apple Color Dots) */}
+        <View style={styles.swatchesRow}>
+          {group.colors.slice(0, 5).map((c) => (
+            <View
+              key={c.name}
+              style={[styles.colorDot, { backgroundColor: c.hex }]}
+              accessibilityLabel={`Color ${c.name}`}
+            />
+          ))}
+          {group.colors.length > 5 && (
+            <Text style={styles.extraColorsText}>+{group.colors.length - 5}</Text>
           )}
-          {Boolean(item.carrier) && (
-            <View style={[styles.specPill, styles.specPillCarrier]}>
-              <Text style={styles.specPillText} numberOfLines={1}>
-                {item.carrier}
-              </Text>
-            </View>
-          )}
-          {Boolean(item.color) && (
-            <View style={styles.specPill}>
-              <Text style={styles.specPillText} numberOfLines={1}>
-                {item.color}
-              </Text>
-            </View>
-          )}
+
+          {/* Chips de Capacidades */}
+          <View style={styles.capacitiesMiniRow}>
+            {group.capacities.slice(0, 3).map((cap) => (
+              <View key={cap} style={styles.capacityMiniPill}>
+                <Text style={styles.capacityMiniText}>{cap}</Text>
+              </View>
+            ))}
+          </View>
         </View>
 
-        {/* Bottom Price & Quick Add Button */}
+        {/* Fila Inferior: Precio Desde y Botón de Acción */}
         <View style={styles.bottomRow}>
           <View>
-            <Text style={styles.priceLabel}>PRECIO</Text>
-            <Text style={styles.priceValue}>{formattedPrice}</Text>
+            <Text style={styles.priceLabel}>DESDE</Text>
+            <Text style={styles.priceValue}>{formattedMinPrice}</Text>
           </View>
 
-          <View style={[styles.addBtnCircle, inCartCount > 0 && styles.addBtnCircleActive]}>
-            <Text style={styles.addBtnPlus}>＋</Text>
+          <View style={[styles.chooseBtn, inCartCount > 0 && styles.chooseBtnActive]}>
+            <Text style={[styles.chooseBtnText, inCartCount > 0 && styles.chooseBtnTextActive]}>
+              Elegir ›
+            </Text>
           </View>
         </View>
       </TouchableOpacity>
@@ -118,21 +136,21 @@ export function AppleTouchCard({ item }: AppleTouchCardProps) {
 const styles = StyleSheet.create({
   wrapper: {
     flex: 1,
-    margin: IPAD_THEME.spacing.sm,
+    margin: 6,
   },
   card: {
     backgroundColor: "#111827",
-    borderRadius: IPAD_THEME.radius.xl,
-    padding: IPAD_THEME.spacing.lg,
+    borderRadius: IPAD_THEME.radius.lg,
+    padding: 12,
     borderWidth: 1.5,
     borderColor: "rgba(255, 255, 255, 0.08)",
     justifyContent: "space-between",
-    minHeight: 180,
+    minHeight: 154,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 3,
   },
   cardActiveInCart: {
     borderColor: IPAD_THEME.colors.accent,
@@ -142,67 +160,104 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: IPAD_THEME.spacing.sm,
+    marginBottom: 6,
+  },
+  topLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  topRight: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   deviceIconBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: "rgba(255, 255, 255, 0.06)",
     alignItems: "center",
     justifyContent: "center",
   },
   deviceIconText: {
-    fontSize: 20,
+    fontSize: 15,
+  },
+  bestsellerBadge: {
+    backgroundColor: "rgba(245, 158, 11, 0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.35)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  bestsellerBadgeText: {
+    color: "#f59e0b",
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0.4,
   },
   inCartBadge: {
     backgroundColor: IPAD_THEME.colors.accent,
-    paddingHorizontal: IPAD_THEME.spacing.md,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
     borderRadius: IPAD_THEME.radius.full,
   },
   inCartText: {
     color: "#0f172a",
-    fontSize: 12,
-    fontWeight: "800",
+    fontSize: 10,
+    fontWeight: "900",
   },
-  gradeBadge: {
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    paddingHorizontal: IPAD_THEME.spacing.sm,
-    paddingVertical: 3,
-    borderRadius: IPAD_THEME.radius.sm,
+  stockBadge: {
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
-  gradeText: {
-    color: IPAD_THEME.colors.textSecondary,
-    fontSize: 11,
+  stockText: {
+    color: IPAD_THEME.colors.textMuted,
+    fontSize: 10,
     fontWeight: "700",
   },
   modelTitle: {
     color: IPAD_THEME.colors.textPrimary,
-    fontSize: 16,
-    fontWeight: "800",
-    lineHeight: 22,
-    marginBottom: IPAD_THEME.spacing.sm,
+    fontSize: 15,
+    fontWeight: "900",
+    lineHeight: 19,
+    marginBottom: 6,
   },
-  specPillsContainer: {
+  swatchesRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginBottom: IPAD_THEME.spacing.md,
+    alignItems: "center",
+    gap: 5,
+    marginBottom: 8,
   },
-  specPill: {
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+  colorDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.25)",
   },
-  specPillCarrier: {
-    backgroundColor: "rgba(56, 189, 248, 0.12)",
-  },
-  specPillText: {
+  extraColorsText: {
     color: IPAD_THEME.colors.textMuted,
-    fontSize: 11,
-    fontWeight: "600",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  capacitiesMiniRow: {
+    flexDirection: "row",
+    gap: 4,
+    marginLeft: "auto",
+  },
+  capacityMiniPill: {
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  capacityMiniText: {
+    color: IPAD_THEME.colors.textMuted,
+    fontSize: 9,
+    fontWeight: "700",
   },
   bottomRow: {
     flexDirection: "row",
@@ -210,35 +265,39 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     borderTopWidth: 1,
     borderTopColor: "rgba(255, 255, 255, 0.06)",
-    paddingTop: IPAD_THEME.spacing.sm,
+    paddingTop: 6,
   },
   priceLabel: {
     color: IPAD_THEME.colors.textMuted,
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: "800",
     letterSpacing: 0.6,
   },
   priceValue: {
     color: "#38bdf8",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "900",
     marginTop: 1,
   },
-  addBtnCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    alignItems: "center",
-    justifyContent: "center",
+  chooseBtn: {
+    backgroundColor: "rgba(56, 189, 248, 0.12)",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: IPAD_THEME.radius.full,
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.3)",
   },
-  addBtnCircleActive: {
+  chooseBtnActive: {
     backgroundColor: IPAD_THEME.colors.accent,
+    borderColor: IPAD_THEME.colors.accent,
   },
-  addBtnPlus: {
-    color: "#fff",
-    fontSize: 18,
+  chooseBtnText: {
+    color: "#38bdf8",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  chooseBtnTextActive: {
+    color: "#0f172a",
     fontWeight: "900",
-    marginTop: -1,
   },
 });

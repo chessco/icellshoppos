@@ -148,11 +148,28 @@ export default function SalesPage() {
   const [soldBy, setSoldBy] = useState("");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
+  const [canViewCostAndMargin, setCanViewCostAndMargin] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [lastCompletedSale, setLastCompletedSale] = useState<SaleReceiptData | null>(null);
   const [companyName, setCompanyName] = useState("Pro Buyer");
   const [logoDataUrl, setLogoDataUrl] = useState<string | undefined>(undefined);
   const [receiptConfig, setReceiptConfig] = useState<ReceiptConfig>(DEFAULT_RECEIPT_CONFIG);
+
+  // Discount Authorization state
+  type ActiveDiscountAuth = {
+    id: string;
+    status: "PENDING" | "APPROVED" | "PARTIAL" | "REJECTED" | "CANCELLED";
+    requestedDiscount: number;
+    approvedDiscount: number;
+    reason: string;
+    responseNote?: string | null;
+  };
+  const [activeDiscountAuth, setActiveDiscountAuth] = useState<ActiveDiscountAuth | null>(null);
+  const [discountModalOpen, setDiscountModalOpen] = useState(false);
+  const [requestedDiscountInput, setRequestedDiscountInput] = useState("");
+  const [discountReasonInput, setDiscountReasonInput] = useState("");
+  const [discountRequestBusy, setDiscountRequestBusy] = useState(false);
+  const [canApproveDiscounts, setCanApproveDiscounts] = useState(false);
 
   const activeCustomers = useMemo(
     () => customers.filter((customer) => customer.status === "Active"),
@@ -228,10 +245,11 @@ export default function SalesPage() {
   const loadData = async () => {
     try {
       setBusy(true);
-      const [inventoryRes, customersRes, profileRes] = await Promise.all([
+      const [inventoryRes, customersRes, profileRes, authRes] = await Promise.all([
         fetch("/api/inventory?status=Available"),
         fetch("/api/customers"),
         fetch("/api/auth/user-profile"),
+        fetch("/api/auth/me", { cache: "no-store" }),
       ]);
 
       if (inventoryRes.ok) {
@@ -257,6 +275,16 @@ export default function SalesPage() {
         }
       }
 
+      if (authRes.ok) {
+        const authData = await authRes.json().catch(() => ({}));
+        const isSuper = Boolean(authData?.session?.isSuperadmin);
+        const role = authData?.role || authData?.session?.role;
+        const hasPerm = authData?.permissions?.canViewCostAndMargin === true;
+        const hasApprovePerm = authData?.permissions?.canApproveDiscounts === true;
+        setCanViewCostAndMargin(isSuper || role === "superadmin" || role === "admin" || hasPerm);
+        setCanApproveDiscounts(isSuper || role === "superadmin" || role === "admin" || hasApprovePerm);
+      }
+
       setStatus(null);
     } catch {
       setStatus("Failed to load checkout data.");
@@ -278,6 +306,33 @@ export default function SalesPage() {
       })
       .catch(() => setReceiptConfig(DEFAULT_RECEIPT_CONFIG));
   }, []);
+
+  useEffect(() => {
+    if (!activeDiscountAuth || activeDiscountAuth.status !== "PENDING") return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/sales/authorizations/${activeDiscountAuth.id}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        const updated = data.authorization;
+        if (updated && updated.status !== "PENDING") {
+          setActiveDiscountAuth({
+            id: updated.id,
+            status: updated.status,
+            requestedDiscount: parseMoney(updated.requestedDiscount),
+            approvedDiscount: parseMoney(updated.approvedDiscount),
+            reason: updated.reason,
+            responseNote: updated.responseNote,
+          });
+        }
+      } catch {
+        // silent
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [activeDiscountAuth]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -459,11 +514,21 @@ export default function SalesPage() {
       .slice(0, 80);
   }, [inventory, cartItemIds, search]);
 
+  const appliedDiscount = useMemo(() => {
+    if (!activeDiscountAuth) return 0;
+    if (activeDiscountAuth.status === "APPROVED" || activeDiscountAuth.status === "PARTIAL") {
+      return activeDiscountAuth.approvedDiscount;
+    }
+    return 0;
+  }, [activeDiscountAuth]);
+
   const totals = useMemo(() => {
     const cost = cart.reduce((sum, item) => sum + item.costPesos, 0);
-    const sale = cart.reduce((sum, item) => sum + item.salePrice, 0);
-    return { cost, sale, margin: sale - cost };
-  }, [cart]);
+    const subtotal = cart.reduce((sum, item) => sum + item.salePrice, 0);
+    const discount = Math.min(appliedDiscount, subtotal);
+    const sale = Math.max(0, subtotal - discount);
+    return { cost, subtotal, discount, sale, margin: sale - cost };
+  }, [cart, appliedDiscount]);
 
   const paidTotal = useMemo(
     () => availablePaymentMethods.reduce((sum, method) => sum + parseMoney(paymentAmounts[method]), 0),
@@ -541,6 +606,10 @@ export default function SalesPage() {
 
   const addToCart = (item: InventoryItem) => {
     if (cartItemIds.has(item.id)) return;
+    if (activeDiscountAuth) {
+      setActiveDiscountAuth(null);
+      setStatus("La autorización de descuento se restableció al modificar los artículos del carrito.");
+    }
     setCart((current) => [
       ...current,
       {
@@ -627,19 +696,148 @@ export default function SalesPage() {
   };
 
   const removeFromCart = (id: string) => {
+    if (activeDiscountAuth) {
+      setActiveDiscountAuth(null);
+      setStatus("La autorización de descuento se restableció al modificar los artículos del carrito.");
+    }
     setCart((current) => current.filter((item) => item.id !== id));
   };
 
   const updateCartPrice = (id: string, value: string) => {
     const parsed = parseMoney(value);
+    if (activeDiscountAuth) {
+      setActiveDiscountAuth(null);
+      setStatus("La autorización de descuento se restableció al cambiar el precio de un artículo.");
+    }
     setCart((current) =>
       current.map((item) => (item.id === id ? { ...item, salePrice: parsed } : item))
     );
   };
 
+  const handleRequestDiscount = async () => {
+    const requested = parseMoney(requestedDiscountInput);
+    const reason = discountReasonInput.trim();
+
+    if (cart.length === 0) {
+      setStatus("Agrega al menos un equipo al carrito antes de solicitar descuento.");
+      return;
+    }
+    if (requested <= 0) {
+      setStatus("El monto de descuento debe ser mayor a 0.");
+      return;
+    }
+    if (requested > totals.subtotal) {
+      setStatus("El descuento solicitado no puede superar el subtotal de la venta.");
+      return;
+    }
+    if (!reason) {
+      setStatus("Debes ingresar un motivo para el descuento solicitado.");
+      return;
+    }
+
+    try {
+      setDiscountRequestBusy(true);
+      const saleId = getOrCreateSaleId();
+
+      const payload = {
+        draftSaleId: saleId,
+        requestedDiscount: requested,
+        reason,
+        customerName: customerName.trim() || undefined,
+        customerEmail: customerEmail.trim() || undefined,
+        customerWhatsapp: fullCustomerWhatsapp || undefined,
+        items: cart.map((item) => ({
+          inventoryItemId: item.id,
+          salePrice: Math.round(item.salePrice),
+        })),
+      };
+
+      const res = await fetch("/api/sales/authorizations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setStatus(data.error || "Error al solicitar autorización de descuento.");
+        return;
+      }
+
+      const created = data.authorization;
+      setActiveDiscountAuth({
+        id: created.id,
+        status: created.status,
+        requestedDiscount: parseMoney(created.requestedDiscount),
+        approvedDiscount: parseMoney(created.approvedDiscount),
+        reason: created.reason,
+        responseNote: created.responseNote,
+      });
+
+      setDiscountModalOpen(false);
+      setRequestedDiscountInput("");
+      setDiscountReasonInput("");
+
+      // Mostrar estado de la notificación WhatsApp al autorizador
+      if (data.agentTriggered === true) {
+        setStatus(`✅ Solicitud enviada. Notificación WhatsApp enviada al autorizador por ${money(requested)}. Esperando aprobación.`);
+      } else if (data.agentError) {
+        setStatus(`⚠️ Solicitud creada por ${money(requested)}, pero no se pudo notificar al autorizador por WhatsApp: ${data.agentError}. El autorizador puede revisar la solicitud manualmente.`);
+      } else {
+        setStatus(`Solicitud de autorización enviada por ${money(requested)}. Esperando aprobación del autorizador.`);
+      }
+    } catch {
+      setStatus("Error de conexión al enviar la solicitud de autorización.");
+    } finally {
+      setDiscountRequestBusy(false);
+    }
+  };
+
+  const checkAuthorizationStatus = async () => {
+    if (!activeDiscountAuth) return;
+    try {
+      setBusy(true);
+      const res = await fetch(`/api/sales/authorizations/${activeDiscountAuth.id}`, { cache: "no-store" });
+      if (!res.ok) {
+        setStatus("No se pudo consultar el estado de la autorización.");
+        return;
+      }
+      const data = await res.json();
+      const updated = data.authorization;
+      if (updated) {
+        setActiveDiscountAuth({
+          id: updated.id,
+          status: updated.status,
+          requestedDiscount: parseMoney(updated.requestedDiscount),
+          approvedDiscount: parseMoney(updated.approvedDiscount),
+          reason: updated.reason,
+          responseNote: updated.responseNote,
+        });
+        if (updated.status === "APPROVED") {
+          setStatus(`¡Descuento aprobado! Monto autorizado: ${money(parseMoney(updated.approvedDiscount))}.`);
+        } else if (updated.status === "PARTIAL") {
+          setStatus(`¡Aprobación parcial! Monto autorizado: ${money(parseMoney(updated.approvedDiscount))}.`);
+        } else if (updated.status === "REJECTED") {
+          setStatus(`El descuento solicitado fue rechazado ($0 autorizado). Motivo: ${updated.responseNote || "Sin nota"}.`);
+        } else if (updated.status === "PENDING") {
+          setStatus("La autorización aún se encuentra pendiente de revisión por el autorizador.");
+        }
+      }
+    } catch {
+      setStatus("Error de conexión al consultar estado.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submitCheckout = async (saleId: string) => {
     if (cart.length === 0) {
       setStatus("Add at least one device to cart.");
+      return;
+    }
+
+    if (activeDiscountAuth && activeDiscountAuth.status === "PENDING") {
+      setStatus("No se puede finalizar la venta mientras la autorización de descuento siga pendiente.");
       return;
     }
 
@@ -671,6 +869,11 @@ export default function SalesPage() {
           .filter(([, amount]) => amount > 0)
       ),
       notes: notes.trim() || undefined,
+      authorizationId:
+        activeDiscountAuth && (activeDiscountAuth.status === "APPROVED" || activeDiscountAuth.status === "PARTIAL")
+          ? activeDiscountAuth.id
+          : undefined,
+      discount: totals.discount,
       items: cart.map((item) => ({
         inventoryItemId: item.id,
         imei: item.imei,
@@ -697,6 +900,8 @@ export default function SalesPage() {
         color: item.color,
         salePrice: Math.round(item.salePrice),
       })),
+      subtotal: totals.subtotal,
+      discount: totals.discount,
       total: totals.sale,
     };
 
@@ -716,6 +921,7 @@ export default function SalesPage() {
       receiptSnapshot.saleId = data.saleId ?? receiptSnapshot.saleId;
       setLastCompletedSale(receiptSnapshot);
       setCart([]);
+      setActiveDiscountAuth(null);
       setNotes("");
       setCustomerName("");
       setCustomerEmail("");
@@ -974,7 +1180,7 @@ export default function SalesPage() {
                     <tr className="border-b border-[#ead8c6] text-[#6a4d3a]">
                       <th className="px-2 py-2">IMEI / SN</th>
                       <th className="px-2 py-2">Device</th>
-                      <th className="px-2 py-2">Cost</th>
+                      {canViewCostAndMargin && <th className="px-2 py-2">Cost</th>}
                       <th className="px-2 py-2">Sale</th>
                       <th className="px-2 py-2">Action</th>
                     </tr>
@@ -984,7 +1190,7 @@ export default function SalesPage() {
                       <tr key={item.id} className="border-b border-[#f1e4d6]">
                         <td className="px-2 py-2">{item.imei}</td>
                         <td className="px-2 py-2">{item.model} {item.capacity} {item.color}</td>
-                        <td className="px-2 py-2">{money(item.costPesos)}</td>
+                        {canViewCostAndMargin && <td className="px-2 py-2">{money(item.costPesos)}</td>}
                         <td className="px-2 py-2">
                           <input
                             value={item.salePrice ? String(Math.round(item.salePrice)) : ""}
@@ -1005,7 +1211,7 @@ export default function SalesPage() {
                     ))}
                     {cart.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-2 py-4 text-center text-[#6a4d3a]">Cart is empty.</td>
+                        <td colSpan={canViewCostAndMargin ? 5 : 4} className="px-2 py-4 text-center text-[#6a4d3a]">Cart is empty.</td>
                       </tr>
                     )}
                   </tbody>
@@ -1013,9 +1219,183 @@ export default function SalesPage() {
               </div>
 
               <div className="mt-4 grid gap-1 text-sm text-[#3b2a1e]">
-                <div>Cost: <span className="font-semibold">{money(totals.cost)}</span></div>
-                <div>Sale: <span className="font-semibold">{money(totals.sale)}</span></div>
-                <div>Margin: <span className="font-semibold">{money(totals.margin)}</span></div>
+                {canViewCostAndMargin && <div>Cost: <span className="font-semibold">{money(totals.cost)}</span></div>}
+                <div>Subtotal: <span className="font-semibold">{money(totals.subtotal)}</span></div>
+                {totals.discount > 0 && (
+                  <div className="text-emerald-700 font-medium">
+                    Descuento autorizado: <span className="font-bold">-{money(totals.discount)}</span>
+                  </div>
+                )}
+                <div>Total: <span className="font-bold text-base text-[#1f1a16]">{money(totals.sale)}</span></div>
+                {canViewCostAndMargin && (
+                  <div>
+                    Margin: <span className={`font-semibold ${totals.margin < 0 ? "text-red-700" : ""}`}>{money(totals.margin)}</span>
+                    {totals.sale > 0 && (
+                      <span className="text-xs text-[#6a4d3a] ml-1">
+                        ({Math.round((totals.margin / totals.sale) * 100)}%)
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Discount Authorization Block */}
+              <div className="mt-4 rounded-xl border border-[#ead8c6] bg-[#fffaf3] p-3 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold uppercase tracking-wider text-[#6a4d3a]">
+                    Autorización de Descuento
+                  </span>
+                  {!activeDiscountAuth && (
+                    <button
+                      type="button"
+                      disabled={cart.length === 0}
+                      onClick={() => {
+                        setRequestedDiscountInput("");
+                        setDiscountReasonInput("");
+                        setDiscountModalOpen(true);
+                      }}
+                      className="rounded-full border border-[#d6c1ad] bg-white px-3 py-1 font-semibold text-[#3b2a1e] hover:bg-[#f5e4d5] disabled:opacity-50"
+                    >
+                      Solicitar Descuento...
+                    </button>
+                  )}
+                </div>
+
+                {activeDiscountAuth && (
+                  <div className="mt-2.5 space-y-2">
+                    {activeDiscountAuth.status === "PENDING" && (
+                      <div className="rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-amber-900">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-amber-800">
+                            DESCUENTO SOLICITADO: {money(activeDiscountAuth.requestedDiscount)}
+                          </span>
+                          <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                            PENDIENTE DE AUTORIZACIÓN
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-amber-800">
+                          Motivo: &quot;{activeDiscountAuth.reason}&quot;
+                        </p>
+                        <p className="text-[11px] text-amber-700 italic">
+                          Esperando que un administrador revise y autorice la solicitud. El cobro está bloqueado hasta obtener respuesta.
+                        </p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={checkAuthorizationStatus}
+                            className="rounded-full border border-amber-400 bg-white px-2.5 py-1 text-[11px] font-bold text-amber-900 hover:bg-amber-100"
+                          >
+                            ↻ Comprobar Estado
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm("¿Cancelar esta solicitud de descuento?")) {
+                                setActiveDiscountAuth(null);
+                              }
+                            }}
+                            className="rounded-full px-2.5 py-1 text-[11px] text-red-700 hover:underline"
+                          >
+                            Cancelar Solicitud
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeDiscountAuth.status === "APPROVED" && (
+                      <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-2.5 text-emerald-900">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-emerald-800">
+                            DESCUENTO AUTORIZADO: {money(activeDiscountAuth.approvedDiscount)}
+                          </span>
+                          <span className="rounded-full bg-emerald-200 px-2 py-0.5 text-[10px] font-bold text-emerald-900">
+                            APROBADO
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-emerald-800">
+                          Descuento aplicado en el total: {money(activeDiscountAuth.approvedDiscount)}.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setActiveDiscountAuth(null)}
+                          className="mt-1 text-[11px] text-emerald-700 hover:underline"
+                        >
+                          Quitar Descuento
+                        </button>
+                      </div>
+                    )}
+
+                    {activeDiscountAuth.status === "PARTIAL" && (
+                      <div className="rounded-lg border border-blue-300 bg-blue-50 p-2.5 text-blue-900">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-blue-800">
+                            DESCUENTO AUTORIZADO: {money(activeDiscountAuth.approvedDiscount)}
+                          </span>
+                          <span className="rounded-full bg-blue-200 px-2 py-0.5 text-[10px] font-bold text-blue-900">
+                            APROBACIÓN PARCIAL
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-blue-800">
+                          Monto solicitado original: {money(activeDiscountAuth.requestedDiscount)}. El autorizador aprobó {money(activeDiscountAuth.approvedDiscount)}.
+                        </p>
+                        {activeDiscountAuth.responseNote && (
+                          <p className="text-[11px] text-blue-700 italic">
+                            Nota del autorizador: &quot;{activeDiscountAuth.responseNote}&quot;
+                          </p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setActiveDiscountAuth(null)}
+                          className="mt-1 text-[11px] text-blue-700 hover:underline"
+                        >
+                          Quitar Descuento
+                        </button>
+                      </div>
+                    )}
+
+                    {activeDiscountAuth.status === "REJECTED" && (
+                      <div className="rounded-lg border border-red-300 bg-red-50 p-2.5 text-red-900">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-red-800">
+                            DESCUENTO AUTORIZADO: $0
+                          </span>
+                          <span className="rounded-full bg-red-200 px-2 py-0.5 text-[10px] font-bold text-red-900">
+                            RECHAZADO
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-red-800">
+                          La solicitud de descuento de {money(activeDiscountAuth.requestedDiscount)} fue rechazada por el autorizador.
+                        </p>
+                        {activeDiscountAuth.responseNote && (
+                          <p className="text-[11px] text-red-700 italic">
+                            Motivo del rechazo: &quot;{activeDiscountAuth.responseNote}&quot;
+                          </p>
+                        )}
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveDiscountAuth(null);
+                              setRequestedDiscountInput("");
+                              setDiscountReasonInput("");
+                              setDiscountModalOpen(true);
+                            }}
+                            className="rounded-full border border-red-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-red-800"
+                          >
+                            Nueva Solicitud...
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveDiscountAuth(null)}
+                            className="rounded-full px-2.5 py-1 text-[11px] text-gray-600 hover:underline"
+                          >
+                            Continuar sin Descuento
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 grid gap-2">
@@ -1095,10 +1475,21 @@ export default function SalesPage() {
               <button
                 type="button"
                 onClick={handleCheckout}
-                disabled={busy || cart.length === 0 || !customerName.trim() || !fullCustomerWhatsapp || !hasPaymentCoverage}
+                disabled={
+                  busy ||
+                  cart.length === 0 ||
+                  !customerName.trim() ||
+                  !fullCustomerWhatsapp ||
+                  !hasPaymentCoverage ||
+                  activeDiscountAuth?.status === "PENDING"
+                }
                 className="mt-4 rounded-full bg-[#1f1a16] px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
               >
-                {busy ? "Processing..." : "Complete Checkout"}
+                {activeDiscountAuth?.status === "PENDING"
+                  ? "Esperando Autorización de Descuento..."
+                  : busy
+                  ? "Processing..."
+                  : "Complete Checkout"}
               </button>
 
               {lastCompletedSale && (
@@ -1135,6 +1526,64 @@ export default function SalesPage() {
           {status && (
             <div className="rounded-2xl border border-[#e6d6c6] bg-[#fff6ea] px-4 py-3 text-sm text-[#5c4332]">
               {status}
+            </div>
+          )}
+
+          {/* Modal Solicitar Descuento */}
+          {discountModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+              <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+                <h3 className="text-lg font-bold text-[#1f1a16]">Solicitar Descuento de Venta</h3>
+                <p className="mt-1 text-xs text-[#6a4d3a]">
+                  Subtotal actual: <span className="font-semibold text-[#1f1a16]">{money(totals.subtotal)}</span> ({cart.length} equipo{cart.length > 1 ? "s" : ""})
+                </p>
+
+                <div className="mt-4">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#6a4d3a]">
+                    Monto de Descuento Solicitado ($ MXN) *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={totals.subtotal}
+                    value={requestedDiscountInput}
+                    onChange={(e) => setRequestedDiscountInput(e.target.value)}
+                    placeholder="Ej. 600"
+                    className="mt-1 w-full rounded-xl border border-[#d6c1ad] bg-[#fffaf3] px-3 py-2 text-base font-bold outline-none focus:border-[#1f1a16]"
+                  />
+                </div>
+
+                <div className="mt-3">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#6a4d3a]">
+                    Motivo del Descuento *
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={discountReasonInput}
+                    onChange={(e) => setDiscountReasonInput(e.target.value)}
+                    placeholder="Ej. Paquete de compra por 2 dispositivos, pago en efectivo..."
+                    className="mt-1 w-full rounded-xl border border-[#d6c1ad] bg-[#fffaf3] px-3 py-2 text-xs outline-none focus:border-[#1f1a16]"
+                  />
+                </div>
+
+                <div className="mt-6 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setDiscountModalOpen(false)}
+                    className="rounded-full border border-[#d6c1ad] px-4 py-2 text-xs font-semibold text-[#5c4332]"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRequestDiscount}
+                    disabled={discountRequestBusy || !requestedDiscountInput || !discountReasonInput.trim()}
+                    className="rounded-full bg-[#1f1a16] px-5 py-2 text-xs font-bold text-white hover:bg-[#3b2a1e] disabled:opacity-50"
+                  >
+                    {discountRequestBusy ? "Enviando..." : "Enviar a Autorización"}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </main>

@@ -9,6 +9,8 @@ import { IPAD_THEME } from "./src/theme/tokens";
 
 import { PosLayoutProvider } from "./src/contexts/PosLayoutContext";
 
+import { CommissionProvider } from "./src/contexts/CommissionContext";
+
 function AppContent() {
   const { session, isRestoringSession } = useAuth();
 
@@ -26,9 +28,11 @@ function AppContent() {
 
   return (
     <CartProvider>
-      <PosLayoutProvider>
-        <MainAppShell />
-      </PosLayoutProvider>
+      <CommissionProvider>
+        <PosLayoutProvider>
+          <MainAppShell />
+        </PosLayoutProvider>
+      </CommissionProvider>
     </CartProvider>
   );
 }

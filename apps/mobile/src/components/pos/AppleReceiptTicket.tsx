@@ -2,7 +2,9 @@ import React from "react";
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from "react-native";
 import { IPAD_THEME } from "../../theme/tokens";
 import { useCart } from "../../contexts/CartContext";
+import { useCommission } from "../../contexts/CommissionContext";
 import { formatCurrency } from "../../utils/formatters";
+import { SellerSelectModal } from "./SellerSelectModal";
 
 interface AppleReceiptTicketProps {
   onProceedCheckout: () => void;
@@ -24,8 +26,14 @@ export function AppleReceiptTicket({
     removeItem,
     clearCart,
   } = useCart();
+  const { activeSeller, calculateEstimate } = useCommission();
+  const [isSellerModalOpen, setIsSellerModalOpen] = React.useState(false);
 
-  const customerDisplay = selectedCustomer?.name || "Cliente Mostrador (Público General)";
+  const commissionSummary = React.useMemo(() => {
+    return calculateEstimate(items);
+  }, [calculateEstimate, items]);
+
+  const customerDisplay = selectedCustomer?.name || "Cliente Mostrador";
 
   return (
     <View style={styles.container}>
@@ -53,24 +61,46 @@ export function AppleReceiptTicket({
         )}
       </View>
 
-      {/* Customer Bar */}
-      <TouchableOpacity
-        style={styles.customerCard}
-        onPress={onOpenCustomerSelect}
-        accessibilityRole="button"
-        accessibilityLabel={`Cliente: ${customerDisplay}. Toca para cambiar.`}
-      >
-        <View style={styles.customerIconCircle}>
-          <Text style={styles.customerIcon}>👤</Text>
-        </View>
-        <View style={styles.customerInfo}>
-          <Text style={styles.customerLabel}>CLIENTE ASIGNADO</Text>
-          <Text style={styles.customerName} numberOfLines={1}>
-            {customerDisplay}
-          </Text>
-        </View>
-        <Text style={styles.customerChangeText}>Cambiar ›</Text>
-      </TouchableOpacity>
+      {/* Participants Bar: Customer + Seller */}
+      <View style={styles.participantsRow}>
+        {/* Customer Card */}
+        <TouchableOpacity
+          style={styles.participantCard}
+          onPress={onOpenCustomerSelect}
+          accessibilityRole="button"
+          accessibilityLabel={`Cliente: ${customerDisplay}. Toca para cambiar.`}
+        >
+          <View style={styles.customerIconCircle}>
+            <Text style={styles.customerIcon}>👤</Text>
+          </View>
+          <View style={styles.participantInfo}>
+            <Text style={styles.participantLabel}>CLIENTE</Text>
+            <Text style={styles.participantName} numberOfLines={1}>
+              {customerDisplay}
+            </Text>
+          </View>
+          <Text style={styles.participantChangeText}>›</Text>
+        </TouchableOpacity>
+
+        {/* Seller Card */}
+        <TouchableOpacity
+          style={styles.participantCard}
+          onPress={() => setIsSellerModalOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`Vendedor: ${activeSeller.name}. Toca para cambiar.`}
+        >
+          <View style={[styles.sellerIconCircle, { backgroundColor: activeSeller.avatarColor || "#6366f1" }]}>
+            <Text style={styles.sellerIcon}>🤝</Text>
+          </View>
+          <View style={styles.participantInfo}>
+            <Text style={styles.participantLabel}>VENDEDOR</Text>
+            <Text style={styles.participantName} numberOfLines={1}>
+              {activeSeller.name}
+            </Text>
+          </View>
+          <Text style={styles.participantChangeText}>›</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Items Scrollable List */}
       <View style={styles.itemsContainer}>
@@ -93,7 +123,7 @@ export function AppleReceiptTicket({
           >
             {items.map((cartItem) => {
               const inv = cartItem.inventoryItem;
-              const displayCapacity = inv.capacity || inv.storageSize;
+              const displayCapacity = inv.capacity || (inv as unknown as { storageSize?: string }).storageSize;
               return (
                 <View key={inv.id} style={styles.itemRow}>
                   <View style={styles.itemInfo}>
@@ -108,7 +138,7 @@ export function AppleReceiptTicket({
                         <Text style={styles.itemSpecBadge}>{inv.carrier}</Text>
                       )}
                       {Boolean(inv.imei) && (
-                        <Text style={styles.itemImeiText}>IMEI: …{inv.imei.slice(-6)}</Text>
+                        <Text style={styles.itemImeiText}>IMEI: …{inv.imei?.slice(-6)}</Text>
                       )}
                     </View>
                     <Text style={styles.itemUnitRate}>
@@ -174,6 +204,21 @@ export function AppleReceiptTicket({
           </Text>
         </View>
 
+        {/* Estimated commission for seller */}
+        {commissionSummary.totalCommission > 0 && (
+          <View style={styles.commissionSummaryRow}>
+            <View style={styles.commissionLabelBox}>
+              <Text style={styles.commissionIcon}>💰</Text>
+              <Text style={styles.commissionLabel}>
+                Comisión Vendedor ({activeSeller.name.split(" ")[0]}):
+              </Text>
+            </View>
+            <Text style={styles.commissionVal}>
+              +{formatCurrency(commissionSummary.totalCommission)} MXN
+            </Text>
+          </View>
+        )}
+
         {/* Primary Checkout Button */}
         <TouchableOpacity
           style={[styles.checkoutBtn, items.length === 0 && styles.checkoutBtnDisabled]}
@@ -190,6 +235,12 @@ export function AppleReceiptTicket({
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Seller Select Modal */}
+      <SellerSelectModal
+        visible={isSellerModalOpen}
+        onClose={() => setIsSellerModalOpen(false)}
+      />
     </View>
   );
 }
@@ -245,10 +296,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
   },
-  customerCard: {
+  participantsRow: {
+    flexDirection: "row",
+    gap: 8,
     marginHorizontal: IPAD_THEME.spacing.lg,
     marginTop: IPAD_THEME.spacing.md,
-    padding: IPAD_THEME.spacing.md,
+  },
+  participantCard: {
+    flex: 1,
+    padding: 10,
     borderRadius: IPAD_THEME.radius.lg,
     backgroundColor: "rgba(255, 255, 255, 0.04)",
     borderWidth: 1,
@@ -257,36 +313,48 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   customerIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: "rgba(56, 189, 248, 0.15)",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: IPAD_THEME.spacing.sm,
+    marginRight: 8,
   },
   customerIcon: {
-    fontSize: 14,
+    fontSize: 13,
   },
-  customerInfo: {
+  sellerIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 8,
+  },
+  sellerIcon: {
+    fontSize: 13,
+  },
+  participantInfo: {
     flex: 1,
   },
-  customerLabel: {
+  participantLabel: {
     color: IPAD_THEME.colors.textMuted,
-    fontSize: 9,
-    fontWeight: "800",
+    fontSize: 8,
+    fontWeight: "900",
     letterSpacing: 0.5,
   },
-  customerName: {
+  participantName: {
     color: IPAD_THEME.colors.textPrimary,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
     marginTop: 1,
   },
-  customerChangeText: {
+  participantChangeText: {
     color: "#38bdf8",
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "700",
+    marginLeft: 4,
   },
   itemsContainer: {
     flex: 1,
@@ -469,6 +537,35 @@ const styles = StyleSheet.create({
   },
   discountText: {
     color: "#34d399",
+  },
+  commissionSummaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "rgba(56, 189, 248, 0.08)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: IPAD_THEME.radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.2)",
+  },
+  commissionLabelBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  commissionIcon: {
+    fontSize: 12,
+  },
+  commissionLabel: {
+    color: "#38bdf8",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  commissionVal: {
+    color: "#38bdf8",
+    fontSize: 12,
+    fontWeight: "900",
   },
   totalRow: {
     flexDirection: "row",

@@ -15,6 +15,8 @@ interface IPadHeaderProps {
   onToggleSidebar?: () => void;
   onOpenCart?: () => void;
   showCartButton?: boolean;
+  onOpenMessages?: () => void;
+  unreadMessagesCount?: number;
 }
 
 export function IPadHeader({
@@ -26,6 +28,8 @@ export function IPadHeader({
   onToggleSidebar,
   onOpenCart,
   showCartButton = false,
+  onOpenMessages,
+  unreadMessagesCount,
 }: IPadHeaderProps) {
   const { items, subtotal } = useCart();
   const { layoutMode, setLayoutMode } = usePosLayout();
@@ -84,6 +88,23 @@ export function IPadHeader({
         <View style={styles.hardwareBadge}>
           <Text style={styles.hardwareText}>📷 {scannerStatus}</Text>
         </View>
+
+        {onOpenMessages && (
+          <TouchableOpacity
+            style={styles.messagingBtn}
+            onPress={onOpenMessages}
+            accessibilityRole="button"
+            accessibilityLabel="Abrir mensajería WhatsApp"
+            activeOpacity={0.7}
+          >
+            <Text style={styles.messagingIcon}>✉️</Text>
+            {unreadMessagesCount !== undefined && unreadMessagesCount > 0 && (
+              <View style={styles.unreadBadge}>
+                <Text style={styles.unreadBadgeText}>{unreadMessagesCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        )}
 
         {showCartButton && onOpenCart && (
           <TouchableOpacity
@@ -214,6 +235,39 @@ const styles = StyleSheet.create({
   },
   modeBtnTextActive: {
     color: "#0f172a",
+    fontWeight: "900",
+  },
+  messagingBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: IPAD_THEME.radius.sm,
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    borderWidth: 1.5,
+    borderColor: "#f59e0b",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  messagingIcon: {
+    fontSize: 16,
+  },
+  unreadBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    backgroundColor: "#ef4444",
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 3,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: IPAD_THEME.colors.surfacePrimary,
+  },
+  unreadBadgeText: {
+    color: "#ffffff",
+    fontSize: 9,
     fontWeight: "900",
   },
 });

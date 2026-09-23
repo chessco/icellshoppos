@@ -1,13 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import LuxuryHeaderActions from "@/components/LuxuryHeaderActions";
 
 type OrgInfo = {
   id: string;
   name: string;
 };
 
-export default function CurrentOrgBadge() {
+type CurrentOrgBadgeProps = {
+  hideActions?: boolean;
+};
+
+export default function CurrentOrgBadge({ hideActions = false }: CurrentOrgBadgeProps = {}) {
   const [org, setOrg] = useState<OrgInfo | null>(null);
 
   useEffect(() => {
@@ -43,8 +48,13 @@ export default function CurrentOrgBadge() {
   if (!org) return null;
 
   return (
-    <span>
-      <span className="font-semibold">Org:</span> {org.name}
-    </span>
+    <>
+      <span className="inline-flex items-center gap-1.5 font-medium text-xs text-[#0f1f3d] bg-white/80 px-3 py-1.5 rounded-xl border border-[#c7dcff] shadow-xs">
+        <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+        <span className="font-black text-slate-500 uppercase tracking-wider text-[10px]">Org:</span>
+        <span className="font-bold">{org.name}</span>
+      </span>
+      {!hideActions && <LuxuryHeaderActions />}
+    </>
   );
 }

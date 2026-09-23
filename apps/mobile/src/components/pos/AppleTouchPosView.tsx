@@ -5,13 +5,22 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
+  ScrollView,
   ActivityIndicator,
   StyleSheet,
   useWindowDimensions,
 } from "react-native";
 import type { IInventoryListItem } from "@ireader/contracts";
 import { IPAD_THEME } from "../../theme/tokens";
+import { useCart } from "../../contexts/CartContext";
+import {
+  groupInventoryByAppleModel,
+  type AppleModelGroup,
+  type AppleSeriesCategory,
+} from "../../utils/appleCatalogGrouping";
+import { formatCurrency } from "../../utils/formatters";
 import { AppleTouchCard } from "./AppleTouchCard";
+import { AppleConfiguratorSheet } from "./AppleConfiguratorSheet";
 
 interface AppleTouchPosViewProps {
   items: IInventoryListItem[];
@@ -19,15 +28,26 @@ interface AppleTouchPosViewProps {
   errorMessage: string | null;
   onRefresh: () => void;
   onOpenScanner: () => void;
+  onOpenMessages?: () => void;
 }
 
 const CATEGORIES = [
-  { id: "all", label: "Todos", icon: "✨" },
   { id: "iphone", label: "iPhone", icon: "📱" },
   { id: "ipad", label: "iPad", icon: "📟" },
   { id: "mac", label: "Mac", icon: "💻" },
   { id: "watch", label: "Watch", icon: "⌚" },
+  { id: "all", label: "Todos", icon: "✨" },
   { id: "other", label: "Otros", icon: "📦" },
+];
+
+const IPHONE_SERIES: Array<{ id: AppleSeriesCategory | "all"; label: string }> = [
+  { id: "bestsellers", label: "⭐ Top Ventas" },
+  { id: "series_17_16", label: "Serie 16 & 17" },
+  { id: "series_15", label: "Serie 15" },
+  { id: "series_14", label: "Serie 14" },
+  { id: "series_13_12", label: "Serie 12 & 13" },
+  { id: "series_se_older", label: "SE & Anteriores" },
+  { id: "all", label: "Todos los iPhone" },
 ];
 
 export function AppleTouchPosView({
@@ -36,82 +56,120 @@ export function AppleTouchPosView({
   errorMessage,
   onRefresh,
   onOpenScanner,
+  onOpenMessages,
 }: AppleTouchPosViewProps) {
   const { width } = useWindowDimensions();
-  const [selectedCategory, setSelectedCategory] = useState("all");
+  const { addItem, items: cartItems } = useCart();
+
+  // Por defecto iniciamos en iPhone y en el Top Más Vendidos para que la pantalla sea ultra-ligera (4-6 tarjetas)
+  const [selectedCategory, setSelectedCategory] = useState("iphone");
+  const [selectedSeries, setSelectedSeries] = useState<AppleSeriesCategory | "all">("bestsellers");
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedGroup, setSelectedGroup] = useState<AppleModelGroup | null>(null);
+  const [viewDensity, setViewDensity] = useState<"grid" | "compact">("grid");
 
-  // Determine number of columns based on width
-  const numColumns = width >= 1100 ? 3 : 2;
+  // En iPad vertical, 2 columnas amplias es la proporción ideal
+  const numColumns = width >= 1200 ? 3 : 2;
 
-  // Filter items based on category and search text
-  const filteredItems = useMemo(() => {
-    return items.filter((item) => {
-      const model = (item.model || "").toLowerCase();
+  // Agrupamiento maestro por modelo (priorizando iPhones más vendidos al inicio)
+  const allGroups = useMemo(() => {
+    return groupInventoryByAppleModel(items || []);
+  }, [items]);
 
-      // Category filter
-      if (selectedCategory === "iphone" && !model.includes("iphone")) return false;
-      if (selectedCategory === "ipad" && !model.includes("ipad")) return false;
-      if (
-        selectedCategory === "mac" &&
-        !model.includes("mac") &&
-        !model.includes("imac") &&
-        !model.includes("book")
-      ) {
-        return false;
-      }
-      if (selectedCategory === "watch" && !model.includes("watch")) return false;
-      if (
-        selectedCategory === "other" &&
-        (model.includes("iphone") ||
-          model.includes("ipad") ||
-          model.includes("mac") ||
-          model.includes("imac") ||
-          model.includes("book") ||
-          model.includes("watch"))
-      ) {
+  // Filtrado de grupos por categoría, subserie y búsqueda
+  const filteredGroups = useMemo(() => {
+    if (!allGroups || !Array.isArray(allGroups)) return [];
+    return allGroups.filter((group): group is AppleModelGroup => {
+      if (!group || !group.modelKey) return false;
+
+      // 1. Filtro de categoría principal
+      if (selectedCategory !== "all" && group.deviceType !== selectedCategory) {
         return false;
       }
 
-      // Search query filter
+      // 2. Filtro de subserie de iPhone (evita saturar la pantalla con 36 equipos)
+      if (selectedCategory === "iphone" || selectedCategory === "all") {
+        if (selectedSeries === "bestsellers" && !group.isBestseller) {
+          return false;
+        }
+        if (selectedSeries === "series_17_16" && group.series !== "series_17_16") {
+          return false;
+        }
+        if (selectedSeries === "series_15" && group.series !== "series_15") {
+          return false;
+        }
+        if (selectedSeries === "series_14" && group.series !== "series_14") {
+          return false;
+        }
+        if (selectedSeries === "series_13_12" && group.series !== "series_13_12") {
+          return false;
+        }
+        if (selectedSeries === "series_se_older" && group.series !== "series_se_older") {
+          return false;
+        }
+      }
+
+      // 3. Filtro de búsqueda
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
-        const imei = item.imei || "";
-        const sku = (item.sku || "").toLowerCase();
-        const serial = (item.serialNumber || "").toLowerCase();
-        return model.includes(q) || imei.includes(q) || sku.includes(q) || serial.includes(q);
+        const matchesModel = (group.modelName || "").toLowerCase().includes(q);
+        const matchesColor = (group.colors || []).some((c) => (c.name || "").toLowerCase().includes(q));
+        const matchesCap = (group.capacities || []).some((c) => (c || "").toLowerCase().includes(q));
+        const matchesImeiOrSku = (group.items || []).some((it) => {
+          if (!it) return false;
+          const imei = (it.imei || "").toLowerCase();
+          const sku = (it.sku || "").toLowerCase();
+          const serial = (it.serialNumber || "").toLowerCase();
+          return imei.includes(q) || sku.includes(q) || serial.includes(q);
+        });
+
+        return matchesModel || matchesColor || matchesCap || matchesImeiOrSku;
       }
 
       return true;
     });
-  }, [items, selectedCategory, searchQuery]);
+  }, [allGroups, selectedCategory, selectedSeries, searchQuery]);
 
-  // Calculate counts per category for chip badges
+  // Conteo de MODELOS por categoría (en lugar de IMEIs brutos) para evitar sensación de saturación
   const countsByCategory = useMemo(() => {
-    const counts: Record<string, number> = { all: items.length };
-    items.forEach((item) => {
-      const m = (item.model || "").toLowerCase();
-      if (m.includes("iphone")) counts["iphone"] = (counts["iphone"] || 0) + 1;
-      else if (m.includes("ipad")) counts["ipad"] = (counts["ipad"] || 0) + 1;
-      else if (m.includes("mac") || m.includes("imac") || m.includes("book"))
-        counts["mac"] = (counts["mac"] || 0) + 1;
-      else if (m.includes("watch")) counts["watch"] = (counts["watch"] || 0) + 1;
-      else counts["other"] = (counts["other"] || 0) + 1;
+    const counts: Record<string, number> = { all: allGroups.length };
+    allGroups.forEach((g) => {
+      const type = g.deviceType || "other";
+      counts[type] = (counts[type] || 0) + 1;
     });
     return counts;
-  }, [items]);
+  }, [allGroups]);
+
+  // Conteo de modelos por subserie para visualización directa en cada chip
+  const seriesCounts = useMemo(() => {
+    const iphoneGroups = allGroups.filter((g) => g.deviceType === "iphone");
+    return {
+      bestsellers: iphoneGroups.filter((g) => g.isBestseller).length,
+      series_17_16: iphoneGroups.filter((g) => g.series === "series_17_16").length,
+      series_15: iphoneGroups.filter((g) => g.series === "series_15").length,
+      series_14: iphoneGroups.filter((g) => g.series === "series_14").length,
+      series_13_12: iphoneGroups.filter((g) => g.series === "series_13_12").length,
+      series_se_older: iphoneGroups.filter((g) => g.series === "series_se_older").length,
+      all: iphoneGroups.length,
+    };
+  }, [allGroups]);
+
+  // Total de unidades físicas en la vista filtrada actual
+  const totalUnitsInView = useMemo(() => {
+    return filteredGroups.reduce((sum, g) => sum + (g.totalAvailable || 0), 0);
+  }, [filteredGroups]);
 
   return (
     <View style={styles.container}>
       {/* Top Search & Category Bar */}
       <View style={styles.topControlPanel}>
-        {/* Search & Scanner Input Row */}
+        {/* Search, Scanner & View Toggle Row */}
         <View style={styles.searchRow}>
           <View style={styles.searchInputWrapper}>
             <Text style={styles.searchIcon}>🔍</Text>
             <TextInput
               style={styles.searchInput}
-              placeholder="Buscar por modelo, capacidad, IMEI o SKU..."
+              placeholder="Buscar modelo, capacidad, color o IMEI..."
               placeholderTextColor={IPAD_THEME.colors.textMuted}
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -133,10 +191,51 @@ export function AppleTouchPosView({
           >
             <Text style={styles.scanLauncherText}>📷 Escanear</Text>
           </TouchableOpacity>
+
+          {onOpenMessages && (
+            <TouchableOpacity
+              style={styles.messagesLauncherBtn}
+              onPress={onOpenMessages}
+              accessibilityRole="button"
+              accessibilityLabel="Abrir Mensajería WhatsApp"
+              activeOpacity={0.7}
+            >
+              <Text style={styles.messagesLauncherText}>✉️ Mensajes</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Toggle de densidad: Cuadrícula vs Lista Compacta */}
+          <View style={styles.densityToggle}>
+            <TouchableOpacity
+              style={[styles.densityBtn, viewDensity === "grid" && styles.densityBtnActive]}
+              onPress={() => setViewDensity("grid")}
+              accessibilityRole="button"
+              accessibilityLabel="Vista cuadrícula"
+            >
+              <Text style={[styles.densityBtnText, viewDensity === "grid" && styles.densityBtnTextActive]}>
+                ⊞
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.densityBtn, viewDensity === "compact" && styles.densityBtnActive]}
+              onPress={() => setViewDensity("compact")}
+              accessibilityRole="button"
+              accessibilityLabel="Vista compacta de lista"
+            >
+              <Text style={[styles.densityBtnText, viewDensity === "compact" && styles.densityBtnTextActive]}>
+                ☰
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Category Pills Bar */}
-        <View style={styles.categoriesBar}>
+        {/* Category Pills Bar (Horizontal Scrollable) */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.categoriesScrollView}
+          contentContainerStyle={styles.categoriesScrollContent}
+        >
           {CATEGORIES.map((cat) => {
             const isSelected = selectedCategory === cat.id;
             const count = countsByCategory[cat.id] || 0;
@@ -144,7 +243,11 @@ export function AppleTouchPosView({
               <TouchableOpacity
                 key={cat.id}
                 style={[styles.categoryPill, isSelected && styles.categoryPillActive]}
-                onPress={() => setSelectedCategory(cat.id)}
+                onPress={() => {
+                  setSelectedCategory(cat.id);
+                  if (cat.id === "iphone") setSelectedSeries("bestsellers");
+                  else setSelectedSeries("all");
+                }}
                 activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel={`Categoría ${cat.label}, ${count} disponibles`}
@@ -161,6 +264,40 @@ export function AppleTouchPosView({
               </TouchableOpacity>
             );
           })}
+        </ScrollView>
+
+        {/* Sub-bar de Series de iPhone (Filtro Anti-Saturación) */}
+        {(selectedCategory === "iphone" || selectedCategory === "all") && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.seriesScrollView}
+            contentContainerStyle={styles.seriesScrollContent}
+          >
+            {IPHONE_SERIES.map((ser) => {
+              const isSelected = selectedSeries === ser.id;
+              const sCount = (seriesCounts as Record<string, number>)[ser.id] ?? 0;
+              return (
+                <TouchableOpacity
+                  key={ser.id}
+                  style={[styles.seriesChip, isSelected && styles.seriesChipActive]}
+                  onPress={() => setSelectedSeries(ser.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.seriesChipText, isSelected && styles.seriesChipTextActive]}>
+                    {ser.label} ({sCount})
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
+
+        {/* Sub-header de conteo sin saturación */}
+        <View style={styles.statusBar}>
+          <Text style={styles.statusText}>
+            Mostrando <Text style={styles.statusHighlight}>{filteredGroups.length} modelos</Text> ({totalUnitsInView} unidades disponibles)
+          </Text>
         </View>
       </View>
 
@@ -178,16 +315,16 @@ export function AppleTouchPosView({
       {isLoading && items.length === 0 ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={IPAD_THEME.colors.accent} />
-          <Text style={styles.loadingText}>Cargando catálogo táctil...</Text>
+          <Text style={styles.loadingText}>Cargando catálogo táctil de Apple...</Text>
         </View>
-      ) : filteredItems.length === 0 ? (
+      ) : filteredGroups.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyIcon}>🔍</Text>
-          <Text style={styles.emptyTitle}>Sin resultados en esta categoría</Text>
+          <Text style={styles.emptyTitle}>Sin resultados en esta sección</Text>
           <Text style={styles.emptySubtitle}>
             {searchQuery
-              ? `No se encontraron equipos para "${searchQuery}". Intenta con otro término.`
-              : "No hay productos disponibles en esta categoría actualmente."}
+              ? `No se encontraron modelos para "${searchQuery}".`
+              : "No hay productos en esta serie actualmente. Selecciona otra categoría."}
           </Text>
           {Boolean(searchQuery) && (
             <TouchableOpacity style={styles.clearFilterBtn} onPress={() => setSearchQuery("")}>
@@ -195,19 +332,95 @@ export function AppleTouchPosView({
             </TouchableOpacity>
           )}
         </View>
+      ) : viewDensity === "compact" ? (
+        /* ─────────────── VISTA COMPACTA TIPO FILA (ANTI-SATURACIÓN) ─────────────── */
+        <FlatList
+          key="compact-list"
+          data={filteredGroups}
+          keyExtractor={(group, index) => group?.modelKey || `compact-${index}`}
+          renderItem={({ item: group }) => {
+            if (!group || !group.modelKey) return null;
+            const inCart = (cartItems || []).filter(
+              (ci) => (ci?.inventoryItem?.model || "").toLowerCase() === group.modelKey
+            ).length;
+
+            return (
+              <TouchableOpacity
+                style={[styles.compactRow, inCart > 0 && styles.compactRowInCart]}
+                onPress={() => setSelectedGroup(group)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.compactLeft}>
+                  <Text style={styles.compactIcon}>
+                    {group.deviceType === "iphone" ? "📱" : group.deviceType === "ipad" ? "📟" : "📦"}
+                  </Text>
+                  <View>
+                    <View style={styles.compactTitleRow}>
+                      <Text style={styles.compactModelTitle}>{group.modelName}</Text>
+                      {group.isBestseller && (
+                        <View style={styles.compactBadge}>
+                          <Text style={styles.compactBadgeText}>⭐ TOP</Text>
+                        </View>
+                      )}
+                      {inCart > 0 && (
+                        <View style={styles.compactInCartBadge}>
+                          <Text style={styles.compactInCartText}>✓ {inCart}</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.compactSwatchesRow}>
+                      {(group.colors || []).slice(0, 4).map((c) => (
+                        <View key={c.name} style={[styles.compactColorDot, { backgroundColor: c.hex }]} />
+                      ))}
+                      <Text style={styles.compactDetailsText}>
+                        {(group.capacities || []).join(", ")} · {group.totalAvailable} disp.
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.compactRight}>
+                  <View style={styles.compactPriceBox}>
+                    <Text style={styles.compactPriceLabel}>DESDE</Text>
+                    <Text style={styles.compactPriceVal}>{formatCurrency(group.minPrice)}</Text>
+                  </View>
+                  <View style={styles.compactActionBtn}>
+                    <Text style={styles.compactActionBtnText}>Elegir ›</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          }}
+          contentContainerStyle={styles.listContentCompact}
+          showsVerticalScrollIndicator={false}
+          onRefresh={onRefresh}
+          refreshing={isLoading}
+        />
       ) : (
+        /* ─────────────── VISTA CUADRÍCULA APPLE CARDS ─────────────── */
         <FlatList
           key={`grid-${numColumns}`}
-          data={filteredItems}
-          keyExtractor={(item) => item.id}
+          data={filteredGroups}
+          keyExtractor={(group, index) => group?.modelKey || `grid-${index}`}
           numColumns={numColumns}
-          renderItem={({ item }) => <AppleTouchCard item={item} />}
+          renderItem={({ item: group }) => {
+            if (!group || !group.modelKey) return null;
+            return <AppleTouchCard group={group} onPressGroup={setSelectedGroup} />;
+          }}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           onRefresh={onRefresh}
           refreshing={isLoading}
         />
       )}
+
+      {/* Apple Store Configurator Sheet (Paso a Paso: Color ➔ Capacidad ➔ IMEI) */}
+      <AppleConfiguratorSheet
+        visible={Boolean(selectedGroup)}
+        group={selectedGroup}
+        onClose={() => setSelectedGroup(null)}
+        onAddToCart={addItem}
+      />
     </View>
   );
 }
@@ -221,13 +434,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#0d131f",
     paddingHorizontal: IPAD_THEME.spacing.lg,
     paddingTop: IPAD_THEME.spacing.md,
-    paddingBottom: IPAD_THEME.spacing.sm,
+    paddingBottom: IPAD_THEME.spacing.xs,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255, 255, 255, 0.08)",
   },
   searchRow: {
     flexDirection: "row",
-    gap: IPAD_THEME.spacing.md,
+    gap: IPAD_THEME.spacing.sm,
+    alignItems: "center",
     marginBottom: IPAD_THEME.spacing.sm,
   },
   searchInputWrapper: {
@@ -237,53 +451,100 @@ const styles = StyleSheet.create({
     backgroundColor: "#161f30",
     borderRadius: IPAD_THEME.radius.lg,
     paddingHorizontal: IPAD_THEME.spacing.md,
-    height: 44,
+    height: 42,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.08)",
   },
   searchIcon: {
-    fontSize: 16,
+    fontSize: 15,
     marginRight: 8,
   },
   searchInput: {
     flex: 1,
     color: IPAD_THEME.colors.textPrimary,
-    fontSize: 14,
-    height: 44,
+    fontSize: 13,
+    paddingVertical: 0,
   },
   clearSearchBtn: {
     padding: 6,
   },
   clearSearchText: {
     color: IPAD_THEME.colors.textMuted,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
   },
   scanLauncherBtn: {
     backgroundColor: "rgba(56, 189, 248, 0.12)",
     borderRadius: IPAD_THEME.radius.lg,
-    paddingHorizontal: IPAD_THEME.spacing.lg,
+    paddingHorizontal: 12,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
     borderColor: "rgba(56, 189, 248, 0.3)",
-    height: 44,
+    height: 42,
   },
   scanLauncherText: {
     color: "#38bdf8",
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "800",
   },
-  categoriesBar: {
+  messagesLauncherBtn: {
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    borderRadius: IPAD_THEME.radius.lg,
+    paddingHorizontal: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "#f59e0b",
+    height: 42,
+  },
+  messagesLauncherText: {
+    color: "#f59e0b",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  densityToggle: {
+    flexDirection: "row",
+    backgroundColor: "#161f30",
+    borderRadius: IPAD_THEME.radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    padding: 2,
+    height: 42,
+    alignItems: "center",
+  },
+  densityBtn: {
+    paddingHorizontal: 10,
+    height: 36,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  densityBtnActive: {
+    backgroundColor: "rgba(56, 189, 248, 0.2)",
+  },
+  densityBtnText: {
+    color: IPAD_THEME.colors.textMuted,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  densityBtnTextActive: {
+    color: "#38bdf8",
+  },
+  categoriesScrollView: {
+    flexGrow: 0,
+  },
+  categoriesScrollContent: {
     flexDirection: "row",
     gap: 8,
-    flexWrap: "wrap",
+    paddingVertical: 2,
+    paddingRight: IPAD_THEME.spacing.md,
   },
   categoryPill: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(255, 255, 255, 0.05)",
-    paddingVertical: 7,
+    paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: IPAD_THEME.radius.full,
     borderWidth: 1,
@@ -295,11 +556,11 @@ const styles = StyleSheet.create({
     borderColor: IPAD_THEME.colors.accent,
   },
   categoryIcon: {
-    fontSize: 14,
+    fontSize: 13,
   },
   categoryLabel: {
     color: IPAD_THEME.colors.textSecondary,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
   },
   categoryLabelActive: {
@@ -317,89 +578,243 @@ const styles = StyleSheet.create({
   },
   countBadgeText: {
     color: IPAD_THEME.colors.textMuted,
-    fontSize: 11,
-    fontWeight: "800",
+    fontSize: 10,
+    fontWeight: "700",
   },
   countBadgeTextActive: {
     color: "#0f172a",
     fontWeight: "900",
   },
+  seriesScrollView: {
+    flexGrow: 0,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  seriesScrollContent: {
+    flexDirection: "row",
+    gap: 6,
+    paddingRight: IPAD_THEME.spacing.md,
+  },
+  seriesChip: {
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
+  },
+  seriesChipActive: {
+    backgroundColor: "rgba(56, 189, 248, 0.15)",
+    borderColor: "rgba(56, 189, 248, 0.4)",
+  },
+  seriesChipText: {
+    color: IPAD_THEME.colors.textMuted,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  seriesChipTextActive: {
+    color: "#38bdf8",
+    fontWeight: "900",
+  },
   errorBanner: {
     backgroundColor: "rgba(239, 68, 68, 0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(239, 68, 68, 0.3)",
-    margin: IPAD_THEME.spacing.md,
-    padding: IPAD_THEME.spacing.md,
-    borderRadius: IPAD_THEME.radius.md,
+    paddingHorizontal: IPAD_THEME.spacing.lg,
+    paddingVertical: 8,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(239, 68, 68, 0.3)",
   },
   errorText: {
-    color: "#f87171",
-    fontSize: 13,
+    color: "#ef4444",
+    fontSize: 12,
     fontWeight: "700",
     flex: 1,
   },
   retryBtn: {
     backgroundColor: "#ef4444",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: IPAD_THEME.radius.sm,
-    marginLeft: 8,
   },
   retryText: {
     color: "#fff",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "800",
   },
   loadingContainer: {
     flex: 1,
-    alignItems: "center",
     justifyContent: "center",
+    alignItems: "center",
     gap: 12,
   },
   loadingText: {
-    color: IPAD_THEME.colors.textMuted,
-    fontSize: 14,
+    color: IPAD_THEME.colors.textSecondary,
+    fontSize: 13,
     fontWeight: "600",
   },
   emptyContainer: {
     flex: 1,
-    alignItems: "center",
     justifyContent: "center",
+    alignItems: "center",
     paddingHorizontal: IPAD_THEME.spacing.xxl,
   },
   emptyIcon: {
-    fontSize: 48,
-    marginBottom: 12,
+    fontSize: 40,
+    marginBottom: 8,
   },
   emptyTitle: {
     color: IPAD_THEME.colors.textPrimary,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "800",
-    marginBottom: 6,
+    marginBottom: 4,
   },
   emptySubtitle: {
     color: IPAD_THEME.colors.textMuted,
-    fontSize: 14,
+    fontSize: 13,
     textAlign: "center",
-    lineHeight: 20,
-    marginBottom: 16,
+    lineHeight: 18,
+    marginBottom: IPAD_THEME.spacing.md,
   },
   clearFilterBtn: {
     backgroundColor: "rgba(255, 255, 255, 0.08)",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     borderRadius: IPAD_THEME.radius.full,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
   },
   clearFilterText: {
     color: IPAD_THEME.colors.textPrimary,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
   },
   listContent: {
-    padding: IPAD_THEME.spacing.sm,
-    paddingBottom: 40,
+    padding: 6,
+  },
+  listContentCompact: {
+    padding: 8,
+    gap: 6,
+  },
+  compactRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#111827",
+    borderRadius: IPAD_THEME.radius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
+  },
+  compactRowInCart: {
+    borderColor: IPAD_THEME.colors.accent,
+    backgroundColor: "#131f37",
+  },
+  compactLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  compactIcon: {
+    fontSize: 20,
+  },
+  compactTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  compactModelTitle: {
+    color: IPAD_THEME.colors.textPrimary,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  compactBadge: {
+    backgroundColor: "rgba(245, 158, 11, 0.2)",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 3,
+  },
+  compactBadgeText: {
+    color: "#f59e0b",
+    fontSize: 9,
+    fontWeight: "900",
+  },
+  compactInCartBadge: {
+    backgroundColor: IPAD_THEME.colors.accent,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 8,
+  },
+  compactInCartText: {
+    color: "#0f172a",
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  compactSwatchesRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 2,
+  },
+  compactColorDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+  },
+  compactDetailsText: {
+    color: IPAD_THEME.colors.textMuted,
+    fontSize: 11,
+    marginLeft: 4,
+  },
+  compactRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  compactPriceBox: {
+    alignItems: "flex-end",
+  },
+  compactPriceLabel: {
+    color: IPAD_THEME.colors.textMuted,
+    fontSize: 8,
+    fontWeight: "800",
+  },
+  compactPriceVal: {
+    color: "#38bdf8",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  compactActionBtn: {
+    backgroundColor: "rgba(56, 189, 248, 0.12)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: IPAD_THEME.radius.full,
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.3)",
+  },
+  compactActionBtnText: {
+    color: "#38bdf8",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  statusBar: {
+    paddingTop: 4,
+    paddingBottom: 2,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  statusText: {
+    color: IPAD_THEME.colors.textMuted,
+    fontSize: 11,
+    fontWeight: "500",
+  },
+  statusHighlight: {
+    color: "#38bdf8",
+    fontWeight: "700",
   },
 });

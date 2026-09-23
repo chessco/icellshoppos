@@ -110,6 +110,7 @@ export default function SalesHistoryPage() {
   const initialSearch = searchParams.get("search")?.trim() ?? "";
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [isSuperadmin, setIsSuperadmin] = useState(false);
+  const [canViewCostAndMargin, setCanViewCostAndMargin] = useState(false);
   const [organizations, setOrganizations] = useState<SessionOrganization[]>([]);
   const [activeOrganizationId, setActiveOrganizationId] = useState("");
   const [activeOrganizationName, setActiveOrganizationName] = useState("");
@@ -183,12 +184,15 @@ export default function SalesHistoryPage() {
         const session = payload?.session as { isSuperadmin?: boolean; activeOrganizationId?: string } | undefined;
         const orgList = Array.isArray(payload?.organizations) ? (payload.organizations as SessionOrganization[]) : [];
         const superadmin = Boolean(session?.isSuperadmin);
+        const role = payload?.role || (payload?.session as { role?: string } | undefined)?.role;
+        const hasCostMarginPerm = (payload?.permissions as Record<string, boolean> | undefined)?.canViewCostAndMargin === true;
         const currentOrg = String(session?.activeOrganizationId ?? "");
         const currentOrgName =
           orgList.find((organization) => organization.id === currentOrg)?.name ?? "";
 
         if (cancelled) return;
         setIsSuperadmin(superadmin);
+        setCanViewCostAndMargin(superadmin || role === "superadmin" || role === "admin" || hasCostMarginPerm);
         setOrganizations(orgList);
         setActiveOrganizationId(currentOrg);
         setActiveOrganizationName(currentOrgName);
@@ -290,13 +294,13 @@ export default function SalesHistoryPage() {
       "Date",
       "Customer Type",
       "Customer Name",
-      "Cost",
+      ...(canViewCostAndMargin ? ["Cost"] : []),
       "Sold Price",
       "Device",
       "IMEI",
       "Serial Number",
       "Model/Color/Capacity",
-      "Margin",
+      ...(canViewCostAndMargin ? ["Margin"] : []),
       "Email",
       "Phone Number",
       ...PAYMENT_METHOD_COLUMNS,
@@ -318,13 +322,13 @@ export default function SalesHistoryPage() {
           new Date(sale.soldAt).toISOString(),
           sale.customerType === "wholesale" ? "Wholesale" : "Retail",
           sale.customer || "",
-          String(Math.round(lineCost)),
+          ...(canViewCostAndMargin ? [String(Math.round(lineCost))] : []),
           String(Math.round(lineSale)),
           `${line.model} ${line.capacity} ${line.color}`.trim(),
           line.imei || "",
           line.serialNumber ?? "",
           `${line.model}/${line.color}/${line.capacity}`,
-          String(Math.round(lineMargin)),
+          ...(canViewCostAndMargin ? [String(Math.round(lineMargin))] : []),
           sale.customerEmail || "",
           sale.customerWhatsapp || "",
           ...paymentColumns,
@@ -534,7 +538,7 @@ export default function SalesHistoryPage() {
     }
   };
 
-  const tableColSpan = isSuperadmin ? 11 : 10;
+  const tableColSpan = (isSuperadmin ? 11 : 10) - (canViewCostAndMargin ? 0 : 2);
 
   return (
     <div className="app-shell">
@@ -592,9 +596,9 @@ export default function SalesHistoryPage() {
                 className="rounded-xl border border-[#e6d6c6] bg-[#fffaf3] px-3 py-2 text-sm outline-none focus:border-[#1f1a16]"
               >
                 <option value="all">All customers</option>
-                {customerOptions.map((customer) => (
-                  <option key={customer} value={customer}>
-                    {customer}
+                {customerOptions.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
                   </option>
                 ))}
               </select>
@@ -651,12 +655,12 @@ export default function SalesHistoryPage() {
               </div>
             )}
 
-            <div className="mt-4 grid gap-1 text-sm text-[#3b2a1e] md:grid-cols-5">
+            <div className={`mt-4 grid gap-1 text-sm text-[#3b2a1e] ${canViewCostAndMargin ? "md:grid-cols-5" : "md:grid-cols-3"}`}>
               <div>Transactions: <span className="font-semibold">{summary.transactions}</span></div>
               <div>Items: <span className="font-semibold">{summary.items}</span></div>
-              <div>Total Cost: <span className="font-semibold">{money(summary.totalCost)}</span></div>
+              {canViewCostAndMargin && <div>Total Cost: <span className="font-semibold">{money(summary.totalCost)}</span></div>}
               <div>Total Sale: <span className="font-semibold">{money(summary.totalSale)}</span></div>
-              <div>Margin: <span className="font-semibold">{money(summary.margin)}</span></div>
+              {canViewCostAndMargin && <div>Margin: <span className="font-semibold">{money(summary.margin)}</span></div>}
             </div>
           </section>
 
@@ -723,9 +727,9 @@ export default function SalesHistoryPage() {
                     <th className="px-2 py-2">Customer</th>
                     <th className="px-2 py-2">Type</th>
                     <th className="px-2 py-2">Items</th>
-                    <th className="px-2 py-2">Cost</th>
+                    {canViewCostAndMargin && <th className="px-2 py-2">Cost</th>}
                     <th className="px-2 py-2">Total</th>
-                    <th className="px-2 py-2">Margin</th>
+                    {canViewCostAndMargin && <th className="px-2 py-2">Margin</th>}
                     <th className="px-2 py-2">Status</th>
                     <th className="px-2 py-2">Receipt</th>
                   </tr>
@@ -745,9 +749,9 @@ export default function SalesHistoryPage() {
                           <td className="px-2 py-2">{sale.customer || "-"}</td>
                           <td className="px-2 py-2">{sale.customerType === "wholesale" ? "Wholesale" : "Retail"}</td>
                           <td className="px-2 py-2">{sale.lines.length}</td>
-                          <td className="px-2 py-2">{money(totalCost)}</td>
+                          {canViewCostAndMargin && <td className="px-2 py-2">{money(totalCost)}</td>}
                           <td className="px-2 py-2">{money(total)}</td>
-                          <td className="px-2 py-2">{money(totalMargin)}</td>
+                          {canViewCostAndMargin && <td className="px-2 py-2">{money(totalMargin)}</td>}
                           <td className="px-2 py-2">{getStatus(sale)}</td>
                           <td className="px-2 py-2">
                             <div className="flex flex-wrap gap-2">
@@ -794,9 +798,9 @@ export default function SalesHistoryPage() {
                                     <th className="px-2 py-2">IMEI</th>
                                     <th className="px-2 py-2">Serial</th>
                                     <th className="px-2 py-2">Device</th>
-                                    <th className="px-2 py-2">Cost</th>
+                                    {canViewCostAndMargin && <th className="px-2 py-2">Cost</th>}
                                     <th className="px-2 py-2">Sold</th>
-                                    <th className="px-2 py-2">Margin</th>
+                                    {canViewCostAndMargin && <th className="px-2 py-2">Margin</th>}
                                     <th className="px-2 py-2">Status</th>
                                   </tr>
                                 </thead>
@@ -815,9 +819,9 @@ export default function SalesHistoryPage() {
                                         <td className="px-2 py-2">{line.imei || "-"}</td>
                                         <td className="px-2 py-2">{line.serialNumber || "-"}</td>
                                         <td className="px-2 py-2">{line.model} {line.capacity} {line.color}</td>
-                                        <td className={`px-2 py-2 ${isZeroCost ? "font-semibold text-[#be123c]" : ""}`}>{money(lineCost)}</td>
+                                        {canViewCostAndMargin && <td className={`px-2 py-2 ${isZeroCost ? "font-semibold text-[#be123c]" : ""}`}>{money(lineCost)}</td>}
                                         <td className="px-2 py-2">{money(lineSale)}</td>
-                                        <td className={`px-2 py-2 font-semibold ${lineMargin < 0 ? "text-[#be123c]" : "text-[#3b2a1e]"}`}>{money(lineMargin)}</td>
+                                        {canViewCostAndMargin && <td className={`px-2 py-2 font-semibold ${lineMargin < 0 ? "text-[#be123c]" : "text-[#3b2a1e]"}`}>{money(lineMargin)}</td>}
                                         <td className={`px-2 py-2 ${isCancelled ? "text-[#a33f29] line-through" : ""}`}>{line.status}</td>
                                       </tr>
                                     );

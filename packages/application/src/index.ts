@@ -6,3 +6,4 @@ export * from "./DeviceNormalizationService.ts";
 export * from "./IntakeValidationService.ts";
 export * from "./PricePreviewService.ts";
 export * from "./CustomerApplicationService.ts";
+export * from "./CommissionApplicationService.ts";

@@ -104,6 +104,7 @@ desktop.ini
 *.swp
 *.dump
 *.sql
+!prisma/migrations/**/*.sql
 
 # Scratch directory
 scratch/

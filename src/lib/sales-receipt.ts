@@ -22,6 +22,8 @@ export type SaleReceiptData = {
   logoDataUrl?: string;
   receiptConfig?: ReceiptConfig;
   items: SaleReceiptItem[];
+  subtotal?: number;
+  discount?: number;
   total: number;
 };
 
@@ -156,6 +158,10 @@ export function buildSaleReceiptDocument(
           </thead>
           <tbody>${rows}</tbody>
         </table>
+        ${receipt.discount && receipt.discount > 0 ? `
+          <div style="margin-top: 10px; text-align: right; font-size: 11px; color: #555;">Subtotal: ${money(receipt.subtotal ?? (receipt.total + receipt.discount))}</div>
+          <div style="margin-top: 2px; text-align: right; font-size: 11px; color: #b91c1c; font-weight: 600;">Descuento autorizado: -${money(receipt.discount)}</div>
+        ` : ""}
         <div class="total">Total: ${money(receipt.total)}</div>
         ${paymentRows ? `<div class="payments">${paymentRows}</div>` : ""}
         ${receipt.notes ? `<div class="meta"><strong>Notes:</strong> ${escapeHtml(receipt.notes)}</div>` : ""}

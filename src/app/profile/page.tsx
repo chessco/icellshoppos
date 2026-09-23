@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
@@ -45,7 +45,9 @@ type PermissionKey =
   | "canCancelSales"
   | "canImportInventoryUpdates"
   | "canManageRepairs"
-  | "canManageTeam";
+  | "canManageTeam"
+  | "canManageCommissions"
+  | "canViewCostAndMargin";
 
 type PermissionMap = Record<PermissionKey, boolean>;
 
@@ -82,6 +84,8 @@ const PERMISSION_LABELS: Array<{ key: PermissionKey; label: string }> = [
   { key: "canImportInventoryUpdates", label: "Import inventory updates" },
   { key: "canManageRepairs", label: "Manage repairs" },
   { key: "canManageTeam", label: "Manage team/invites" },
+  { key: "canManageCommissions", label: "Manage sales commissions" },
+  { key: "canViewCostAndMargin", label: "View inventory cost and sales margin" },
 ];
 
 const defaultPermissionsByRole = (role: TeamMember["role"]): PermissionMap => {
@@ -97,6 +101,8 @@ const defaultPermissionsByRole = (role: TeamMember["role"]): PermissionMap => {
       canImportInventoryUpdates: true,
       canManageRepairs: true,
       canManageTeam: true,
+      canManageCommissions: true,
+      canViewCostAndMargin: true,
     };
   }
 
@@ -111,6 +117,8 @@ const defaultPermissionsByRole = (role: TeamMember["role"]): PermissionMap => {
     canImportInventoryUpdates: false,
     canManageRepairs: false,
     canManageTeam: false,
+    canManageCommissions: false,
+    canViewCostAndMargin: false,
   };
 };
 
