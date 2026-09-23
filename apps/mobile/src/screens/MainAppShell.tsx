@@ -41,6 +41,8 @@ export function MainAppShell() {
   );
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isMessagesOpen, setIsMessagesOpen] = useState(false);
+  const [messagesInitialPhone, setMessagesInitialPhone] = useState<string | undefined>(undefined);
+  const [messagesInitialName, setMessagesInitialName] = useState<string | undefined>(undefined);
   const [connectivityState, setConnectivityState] = useState<ConnectivityState>("ONLINE");
   const [scannerStatus, setScannerStatus] = useState("CHECKING");
 
@@ -174,7 +176,11 @@ export function MainAppShell() {
                 connectivityState={connectivityState}
                 onRefreshConnectivity={checkConnectivity}
                 scannerStatus={scannerStatus}
-                onOpenMessages={() => setIsMessagesOpen(true)}
+                onOpenMessages={(phone, name) => {
+                  setMessagesInitialPhone(phone);
+                  setMessagesInitialName(name);
+                  setIsMessagesOpen(true);
+                }}
               />
             )}
             {currentTab === "inventory" && <InventoryScreen />}
@@ -188,7 +194,13 @@ export function MainAppShell() {
       {/* iPad Floating Luxury Messages Modal */}
       <QuickMessagesModal
         visible={isMessagesOpen}
-        onClose={() => setIsMessagesOpen(false)}
+        onClose={() => {
+          setIsMessagesOpen(false);
+          setMessagesInitialPhone(undefined);
+          setMessagesInitialName(undefined);
+        }}
+        initialPhone={messagesInitialPhone}
+        initialCustomerName={messagesInitialName}
       />
     </SafeAreaView>
   );

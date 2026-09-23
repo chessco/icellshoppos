@@ -47,74 +47,123 @@ export function QuickMessagesModal({
   initialPhone,
   initialCustomerName,
 }: QuickMessagesModalProps) {
-  const { baseUrl, session } = useAuth();
+  const { session, apiClient } = useAuth();
   const [activeTab, setActiveTab] = useState<"WHATSAPP" | "INTERNAL">("WHATSAPP");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedConversation, setSelectedConversation] = useState<ConversationItem | null>(null);
   const [messageText, setMessageText] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
   const [newChatPhone, setNewChatPhone] = useState(initialPhone || "");
   const [newChatName, setNewChatName] = useState(initialCustomerName || "");
 
-  // Mock initial conversations for instant reactivity and offline resilience
-  const [conversations, setConversations] = useState<ConversationItem[]>([
-    {
-      id: "526441551116",
-      phone: "+52 644 155 1116",
-      customerName: "Carlos Mendoza",
-      lastMessage: "Hola, ¿tienen disponibilidad de iPhone 15 Pro Max 256GB?",
-      updatedAt: "10:42 AM",
-      unreadCount: 1,
-    },
-    {
-      id: "526442119933",
-      phone: "+52 644 211 9933",
-      customerName: "Lucía Morales",
-      lastMessage: "Recibido el comprobante de compra. Muchas gracias!",
-      updatedAt: "Ayer",
-    },
-    {
-      id: "526449887722",
-      phone: "+52 644 988 7722",
-      customerName: "Roberto Vega",
-      lastMessage: "Perfecto, paso a recoger el equipo por la tarde.",
-      updatedAt: "Lun",
-    },
-  ]);
+  // Real conversations state with fallback defaults
+  const [conversations, setConversations] = useState<ConversationItem[]>([]);
+  const [messages, setMessages] = useState<Record<string, ChatMessageItem[]>>({});
 
-  const [messages, setMessages] = useState<Record<string, ChatMessageItem[]>>({
-    "526441551116": [
-      {
-        id: "m1",
-        senderName: "Carlos Mendoza",
-        direction: "INBOUND",
-        content: "Hola, ¿tienen disponibilidad de iPhone 15 Pro Max 256GB?",
-        createdAt: "10:40 AM",
-      },
-      {
-        id: "m2",
-        senderName: "Pro Buyer POS",
-        direction: "OUTBOUND",
-        content: "¡Hola Carlos! Sí, tenemos 3 unidades disponibles en color Natural Titanium a $22,499 MXN.",
-        createdAt: "10:41 AM",
-        status: "DELIVERED",
-      },
-      {
-        id: "m3",
-        senderName: "Carlos Mendoza",
-        direction: "INBOUND",
-        content: "¿Me podrías apartar uno para pasar hoy a las 4pm?",
-        createdAt: "10:42 AM",
-      },
-    ],
-  });
+  // 1. Load real conversations from backend
+  const loadConversations = React.useCallback(async () => {
+    if (!visible) return;
+    setIsLoadingConversations(true);
+    try {
+      const tabParam = activeTab === "WHATSAPP" ? "whatsapp" : "internal";
+      const res = await apiClient.getWhatsAppConversations(tabParam);
+      if (res.ok && Array.isArray(res.data)) {
+        const loaded: ConversationItem[] = res.data.map((c: any) => ({
+          id: String(c.id || c.conversationId || c.phone || ""),
+          phone: c.phone || (c.conversationId ? `+${c.conversationId}` : ""),
+          customerName: c.customerName || c.recipientName || (activeTab === "WHATSAPP" ? "Cliente WhatsApp" : "Compañero"),
+          lastMessage: c.lastMessage || c.content || "",
+          updatedAt: c.updatedAt
+            ? new Date(c.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            : "Reciente",
+          unreadCount: c.unreadCount || 0,
+        })).filter((c) => Boolean(c.id));
 
+        setConversations(loaded);
+      }
+    } catch {
+      // offline fallback
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  }, [visible, activeTab, apiClient]);
+
+  // Load conversations on modal open or tab change
   useEffect(() => {
-    if (visible && !selectedConversation && conversations.length > 0) {
+    if (visible) {
+      void loadConversations();
+    }
+  }, [visible, activeTab, loadConversations]);
+
+  // Handle initialPhone parameter (e.g. from POS Ticket or Sale Confirmation)
+  useEffect(() => {
+    if (!visible || !initialPhone) return;
+
+    const rawDigits = initialPhone.replace(/\D/g, "");
+    if (!rawDigits || rawDigits.length < 10) return;
+    const cleanId = rawDigits.length === 10 ? `52${rawDigits}` : rawDigits;
+
+    // Check if conversation already exists in current list
+    const found = conversations.find((c) => c.id === cleanId || c.id.includes(rawDigits));
+    if (found) {
+      setSelectedConversation(found);
+    } else {
+      // Create and select on the fly
+      const targetConv: ConversationItem = {
+        id: cleanId,
+        phone: `+${cleanId}`,
+        customerName: initialCustomerName || "Cliente WhatsApp",
+        lastMessage: "Conversación directa POS",
+        updatedAt: "Ahora",
+      };
+      setConversations((prev) => [targetConv, ...prev.filter((c) => c.id !== cleanId)]);
+      setSelectedConversation(targetConv);
+    }
+  }, [visible, initialPhone, initialCustomerName, conversations]);
+
+  // Default selection if none selected
+  useEffect(() => {
+    if (visible && !selectedConversation && conversations.length > 0 && !initialPhone) {
       setSelectedConversation(conversations[0]);
     }
-  }, [visible, conversations, selectedConversation]);
+  }, [visible, conversations, selectedConversation, initialPhone]);
+
+  // 2. Load message history for selected conversation
+  useEffect(() => {
+    if (!visible || !selectedConversation) return;
+
+    let isMounted = true;
+    const fetchHistory = async () => {
+      try {
+        const res = await apiClient.getChatMessages(selectedConversation.id, activeTab);
+        if (res.ok && Array.isArray(res.data) && isMounted) {
+          const serverMsgs: ChatMessageItem[] = res.data.map((m: any) => ({
+            id: String(m.id),
+            senderName: m.senderName || (m.direction === "OUTBOUND" ? "Vendedor" : selectedConversation.customerName),
+            direction: m.direction,
+            content: m.content,
+            createdAt: m.createdAt
+              ? new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+              : "",
+            status: m.status,
+          }));
+          setMessages((prev) => ({
+            ...prev,
+            [selectedConversation.id]: serverMsgs,
+          }));
+        }
+      } catch {
+        // silent
+      }
+    };
+
+    void fetchHistory();
+    return () => {
+      isMounted = false;
+    };
+  }, [visible, selectedConversation, activeTab, apiClient]);
 
   const filteredConversations = useMemo(() => {
     if (!searchQuery.trim()) return conversations;
@@ -149,7 +198,7 @@ export function QuickMessagesModal({
       status: "SENT",
     };
 
-    // Update local state instantly for zero-latency UX
+    // Optimistic UI update for instant zero-latency feedback
     setMessages((prev) => ({
       ...prev,
       [convId]: [...(prev[convId] || []), newMsg],
@@ -160,18 +209,12 @@ export function QuickMessagesModal({
     );
 
     try {
-      if (baseUrl) {
-        await fetch(`${baseUrl}/api/messages/send`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            channel: activeTab,
-            phone: convId,
-            content: text,
-            recipientName: selectedConversation.customerName,
-          }),
-        }).catch(() => null);
-      }
+      await apiClient.sendChatMessage({
+        channel: activeTab,
+        phone: convId,
+        content: text,
+        recipientName: selectedConversation.customerName,
+      });
     } catch {
       // Offline fallback preserves local message
     } finally {

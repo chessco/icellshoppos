@@ -24,7 +24,7 @@ interface PosMasterScreenProps {
   connectivityState: ConnectivityState;
   onRefreshConnectivity: () => void;
   scannerStatus: string;
-  onOpenMessages?: () => void;
+  onOpenMessages?: (initialPhone?: string, initialCustomerName?: string) => void;
 }
 
 export function PosMasterScreen({
@@ -152,6 +152,7 @@ export function PosMasterScreen({
           setLastSaleResult(null);
           setViewMode("pos");
         }}
+        onOpenWhatsApp={(phone, name) => onOpenMessages?.(phone, name)}
       />
     );
   }
@@ -174,7 +175,7 @@ export function PosMasterScreen({
               errorMessage={errorMessage}
               onRefresh={loadInventoryData}
               onOpenScanner={() => setIsScannerOpen(true)}
-              onOpenMessages={onOpenMessages}
+              onOpenMessages={() => onOpenMessages?.()}
             />
           </View>
 
@@ -184,6 +185,7 @@ export function PosMasterScreen({
               onProceedCheckout={() => setViewMode("checkout")}
               onOpenCustomerSelect={() => setIsCustomerModalOpen(true)}
               onOpenScanner={() => setIsScannerOpen(true)}
+              onOpenWhatsApp={(phone, name) => onOpenMessages?.(phone, name)}
             />
           </View>
         </View>

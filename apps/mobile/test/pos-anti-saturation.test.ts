@@ -8,7 +8,7 @@ import {
 import type { IInventoryListItem } from "../../../packages/contracts/src/index.ts";
 
 test("Anti-saturation: Top Ventas filter strictly limits the default screen to <= 6 flagship models", () => {
-  const mockPhones: IInventoryListItem[] = [
+  const mockPhones = [
     { id: "1", model: "iPhone 16 Pro 128GB Black Titanium", price: 21999, status: "Available" },
     { id: "2", model: "iPhone 16 128GB Ultramarine", price: 17499, status: "Available" },
     { id: "3", model: "iPhone 16e 128GB Black", price: 14499, status: "Available" },
@@ -24,7 +24,7 @@ test("Anti-saturation: Top Ventas filter strictly limits the default screen to <
     { id: "13", model: "iPhone 17 Pro 256GB Cosmic Orange", price: 24999, status: "Available" },
     { id: "14", model: "iPhone 17 Pro Max 256GB Cosmic Orange", price: 28999, status: "Available" },
     { id: "15", model: "iPhone SE 3 64GB Starlight", price: 4999, status: "Available" },
-  ];
+  ] as unknown as IInventoryListItem[];
 
   const groups = groupInventoryByAppleModel(mockPhones);
   const bestsellers = groups.filter((g) => g.deviceType === "iphone" && g.isBestseller);

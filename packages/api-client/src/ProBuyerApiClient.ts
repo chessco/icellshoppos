@@ -216,4 +216,63 @@ export class ProBuyerApiClient {
     const res = await this.request<{ customers: any[]; grandTotal?: number }>(`/api/credit-ledger${query}`, { method: "GET" });
     return { ok: res.ok, data: res.data?.customers, grandTotal: res.data?.grandTotal, error: res.error };
   }
+
+  // ─── Discount Authorizations ──────────────────────────────────────────────
+  async requestDiscountAuthorization(payload: {
+    draftSaleId: string;
+    requestedDiscount: number;
+    reason: string;
+    customerName?: string;
+    customerEmail?: string;
+    customerWhatsapp?: string;
+    items: { inventoryItemId?: string; salePrice: number }[];
+  }): Promise<{ ok: boolean; data?: any; error?: string; agentTriggered?: boolean; agentError?: string }> {
+    const res = await this.request<{ authorization: any; agentTriggered?: boolean; agentError?: string }>("/api/sales/authorizations", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return {
+      ok: res.ok,
+      data: res.data?.authorization,
+      error: res.error,
+      agentTriggered: res.data?.agentTriggered,
+      agentError: res.data?.agentError,
+    };
+  }
+
+  async getDiscountAuthorization(id: string): Promise<{ ok: boolean; data?: any; error?: string }> {
+    const res = await this.request<{ authorization: any }>(`/api/sales/authorizations/${encodeURIComponent(id)}`, {
+      method: "GET",
+    });
+    return { ok: res.ok, data: res.data?.authorization, error: res.error };
+  }
+
+  // ─── Chat & WhatsApp Messaging ────────────────────────────────────────────
+  async getWhatsAppConversations(tab: "whatsapp" | "internal" = "whatsapp"): Promise<{ ok: boolean; data?: any[]; error?: string }> {
+    const res = await this.request<{ conversations: any[] }>(`/api/messages/conversations?tab=${encodeURIComponent(tab)}`, {
+      method: "GET",
+    });
+    return { ok: res.ok, data: res.data?.conversations, error: res.error };
+  }
+
+  async getChatMessages(conversationId: string, channel: "WHATSAPP" | "INTERNAL" = "WHATSAPP"): Promise<{ ok: boolean; data?: any[]; error?: string }> {
+    const res = await this.request<{ messages: any[] }>(`/api/messages/history?conversationId=${encodeURIComponent(conversationId)}&channel=${encodeURIComponent(channel)}`, {
+      method: "GET",
+    });
+    return { ok: res.ok, data: res.data?.messages, error: res.error };
+  }
+
+  async sendChatMessage(payload: {
+    channel?: "WHATSAPP" | "INTERNAL";
+    phone?: string;
+    recipientUserId?: string;
+    recipientName?: string;
+    content: string;
+  }): Promise<{ ok: boolean; data?: any; error?: string; providerResult?: any }> {
+    const res = await this.request<{ success: boolean; message: any; providerResult?: any }>("/api/messages/send", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return { ok: res.ok, data: res.data?.message, error: res.error, providerResult: res.data?.providerResult };
+  }
 }

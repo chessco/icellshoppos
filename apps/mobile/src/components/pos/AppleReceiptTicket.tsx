@@ -5,22 +5,26 @@ import { useCart } from "../../contexts/CartContext";
 import { useCommission } from "../../contexts/CommissionContext";
 import { formatCurrency } from "../../utils/formatters";
 import { SellerSelectModal } from "./SellerSelectModal";
+import { DiscountAuthorizationModal } from "./DiscountAuthorizationModal";
 
 interface AppleReceiptTicketProps {
   onProceedCheckout: () => void;
   onOpenCustomerSelect: () => void;
   onOpenScanner: () => void;
+  onOpenWhatsApp?: (phone?: string, name?: string) => void;
 }
 
 export function AppleReceiptTicket({
   onProceedCheckout,
   onOpenCustomerSelect,
   onOpenScanner,
+  onOpenWhatsApp,
 }: AppleReceiptTicketProps) {
   const {
     items,
     selectedCustomer,
     discountAmount,
+    activeDiscountAuth,
     subtotal,
     totalPreview,
     removeItem,
@@ -28,6 +32,7 @@ export function AppleReceiptTicket({
   } = useCart();
   const { activeSeller, calculateEstimate } = useCommission();
   const [isSellerModalOpen, setIsSellerModalOpen] = React.useState(false);
+  const [isDiscountModalOpen, setIsDiscountModalOpen] = React.useState(false);
 
   const commissionSummary = React.useMemo(() => {
     return calculateEstimate(items);
@@ -64,23 +69,35 @@ export function AppleReceiptTicket({
       {/* Participants Bar: Customer + Seller */}
       <View style={styles.participantsRow}>
         {/* Customer Card */}
-        <TouchableOpacity
-          style={styles.participantCard}
-          onPress={onOpenCustomerSelect}
-          accessibilityRole="button"
-          accessibilityLabel={`Cliente: ${customerDisplay}. Toca para cambiar.`}
-        >
-          <View style={styles.customerIconCircle}>
-            <Text style={styles.customerIcon}>👤</Text>
-          </View>
-          <View style={styles.participantInfo}>
-            <Text style={styles.participantLabel}>CLIENTE</Text>
-            <Text style={styles.participantName} numberOfLines={1}>
-              {customerDisplay}
-            </Text>
-          </View>
-          <Text style={styles.participantChangeText}>›</Text>
-        </TouchableOpacity>
+        <View style={styles.customerCardWrapper}>
+          <TouchableOpacity
+            style={styles.participantCard}
+            onPress={onOpenCustomerSelect}
+            accessibilityRole="button"
+            accessibilityLabel={`Cliente: ${customerDisplay}. Toca para cambiar.`}
+          >
+            <View style={styles.customerIconCircle}>
+              <Text style={styles.customerIcon}>👤</Text>
+            </View>
+            <View style={styles.participantInfo}>
+              <Text style={styles.participantLabel}>CLIENTE</Text>
+              <Text style={styles.participantName} numberOfLines={1}>
+                {customerDisplay}
+              </Text>
+            </View>
+            <Text style={styles.participantChangeText}>›</Text>
+          </TouchableOpacity>
+
+          {Boolean(selectedCustomer?.phone) && onOpenWhatsApp && (
+            <TouchableOpacity
+              style={styles.customerWaBtn}
+              onPress={() => onOpenWhatsApp(selectedCustomer?.phone, selectedCustomer?.name)}
+              accessibilityLabel="Enviar WhatsApp al cliente"
+            >
+              <Text style={styles.customerWaIcon}>💬</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* Seller Card */}
         <TouchableOpacity
@@ -194,6 +211,48 @@ export function AppleReceiptTicket({
           </View>
         )}
 
+        {/* Discount Trigger / Status Card */}
+        {items.length > 0 && (
+          <View style={styles.discountSection}>
+            {!activeDiscountAuth ? (
+              <TouchableOpacity
+                style={styles.requestDiscountBtn}
+                onPress={() => setIsDiscountModalOpen(true)}
+              >
+                <Text style={styles.requestDiscountText}>🏷️ Solicitar Descuento vía WhatsApp</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[
+                  styles.discountStatusCard,
+                  activeDiscountAuth.status === "PENDING" && styles.discountStatusPending,
+                  (activeDiscountAuth.status === "APPROVED" || activeDiscountAuth.status === "PARTIAL") &&
+                    styles.discountStatusApproved,
+                  activeDiscountAuth.status === "REJECTED" && styles.discountStatusRejected,
+                ]}
+                onPress={() => setIsDiscountModalOpen(true)}
+              >
+                <View style={styles.discountStatusInfo}>
+                  <Text style={styles.discountStatusTitle}>
+                    {activeDiscountAuth.status === "PENDING" && "⏳ Esperando WhatsApp..."}
+                    {activeDiscountAuth.status === "APPROVED" &&
+                      `✅ Descuento: -${formatCurrency(activeDiscountAuth.approvedDiscount)}`}
+                    {activeDiscountAuth.status === "PARTIAL" &&
+                      `ℹ️ Descuento Parcial: -${formatCurrency(activeDiscountAuth.approvedDiscount)}`}
+                    {activeDiscountAuth.status === "REJECTED" && "❌ Descuento Rechazado"}
+                  </Text>
+                  <Text style={styles.discountStatusSub}>
+                    {activeDiscountAuth.status === "PENDING"
+                      ? "Autorización en curso"
+                      : "Toca para ver o modificar"}
+                  </Text>
+                </View>
+                <Text style={styles.discountStatusAction}>›</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
         <View style={styles.totalRow}>
           <View>
             <Text style={styles.totalLabel}>TOTAL A COBRAR</Text>
@@ -221,9 +280,12 @@ export function AppleReceiptTicket({
 
         {/* Primary Checkout Button */}
         <TouchableOpacity
-          style={[styles.checkoutBtn, items.length === 0 && styles.checkoutBtnDisabled]}
+          style={[
+            styles.checkoutBtn,
+            (items.length === 0 || activeDiscountAuth?.status === "PENDING") && styles.checkoutBtnDisabled,
+          ]}
           onPress={onProceedCheckout}
-          disabled={items.length === 0}
+          disabled={items.length === 0 || activeDiscountAuth?.status === "PENDING"}
           activeOpacity={0.8}
           accessibilityRole="button"
           accessibilityLabel={`Cobrar ${formatCurrency(totalPreview)}`}
@@ -231,6 +293,8 @@ export function AppleReceiptTicket({
           <Text style={styles.checkoutBtnText}>
             {items.length === 0
               ? "Agrega productos para cobrar"
+              : activeDiscountAuth?.status === "PENDING"
+              ? "⏳ Esperando Aprobación de Descuento..."
               : `Cobrar ${formatCurrency(totalPreview)} MXN ›`}
           </Text>
         </TouchableOpacity>
@@ -240,6 +304,12 @@ export function AppleReceiptTicket({
       <SellerSelectModal
         visible={isSellerModalOpen}
         onClose={() => setIsSellerModalOpen(false)}
+      />
+
+      {/* Discount Authorization Modal */}
+      <DiscountAuthorizationModal
+        visible={isDiscountModalOpen}
+        onClose={() => setIsDiscountModalOpen(false)}
       />
     </View>
   );
@@ -615,5 +685,83 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "900",
     letterSpacing: 0.2,
+  },
+  customerCardWrapper: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  customerWaBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: IPAD_THEME.radius.lg,
+    backgroundColor: "rgba(34, 197, 94, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(34, 197, 94, 0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  customerWaIcon: {
+    fontSize: 16,
+  },
+  discountSection: {
+    marginVertical: 4,
+  },
+  requestDiscountBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(96, 165, 250, 0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(96, 165, 250, 0.3)",
+    borderRadius: IPAD_THEME.radius.lg,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  requestDiscountText: {
+    color: "#60a5fa",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  discountStatusCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: IPAD_THEME.radius.lg,
+    borderWidth: 1,
+  },
+  discountStatusPending: {
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+    borderColor: "rgba(245, 158, 11, 0.4)",
+  },
+  discountStatusApproved: {
+    backgroundColor: "rgba(34, 197, 94, 0.12)",
+    borderColor: "rgba(34, 197, 94, 0.4)",
+  },
+  discountStatusRejected: {
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    borderColor: "rgba(239, 68, 68, 0.4)",
+  },
+  discountStatusInfo: {
+    flex: 1,
+  },
+  discountStatusTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#ffffff",
+  },
+  discountStatusSub: {
+    fontSize: 10,
+    color: "#94a3b8",
+    marginTop: 2,
+  },
+  discountStatusAction: {
+    fontSize: 18,
+    color: "#94a3b8",
+    fontWeight: "700",
+    marginLeft: 8,
   },
 });

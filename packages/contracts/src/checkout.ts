@@ -52,6 +52,15 @@ export interface BackendSaleItemInput {
   salePrice: number;
 }
 
+export interface ActiveDiscountAuthInfo {
+  id: string;
+  status: "PENDING" | "APPROVED" | "PARTIAL" | "REJECTED" | "CANCELLED";
+  requestedDiscount: number;
+  approvedDiscount: number;
+  reason: string;
+  responseNote?: string | null;
+}
+
 export interface BackendSaleCreatePayload {
   saleId?: string;
   customerName?: string;
@@ -63,6 +72,8 @@ export interface BackendSaleCreatePayload {
   notes?: string;
   soldBy?: string;
   items: BackendSaleItemInput[];
+  authorizationId?: string;
+  discount?: number;
 }
 
 export interface SaleCustomerInfo {

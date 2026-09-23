@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useMemo } from "react";
-import type { IInventoryListItem } from "@ireader/contracts";
+import React, { createContext, useContext, useState, useMemo, useEffect } from "react";
+import type { IInventoryListItem, ActiveDiscountAuthInfo } from "@ireader/contracts";
+import { useAuth } from "./AuthContext";
 
 export interface CartItem {
   inventoryItem: IInventoryListItem;
@@ -19,6 +20,7 @@ interface CartContextValue {
   items: CartItem[];
   selectedCustomer: CustomerInfo | null;
   discountAmount: number;
+  activeDiscountAuth: ActiveDiscountAuthInfo | null;
   subtotal: number;
   totalPreview: number;
   addItem: (item: IInventoryListItem, customPrice?: number) => void;
@@ -26,6 +28,9 @@ interface CartContextValue {
   updateItemPrice: (itemId: string, newPrice: number) => void;
   setCustomer: (customer: CustomerInfo | null) => void;
   setDiscountAmount: (discount: number) => void;
+  setActiveDiscountAuth: (auth: ActiveDiscountAuthInfo | null) => void;
+  clearDiscount: () => void;
+  checkDiscountStatus: () => Promise<void>;
   clearCart: () => void;
   hasItem: (itemId: string) => boolean;
 }
@@ -33,9 +38,70 @@ interface CartContextValue {
 const CartContext = createContext<CartContextValue | null>(null);
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
+  const { apiClient } = useAuth();
   const [items, setItems] = useState<CartItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerInfo | null>(null);
   const [discountAmount, setDiscountAmountState] = useState<number>(0);
+  const [activeDiscountAuth, setActiveDiscountAuth] = useState<ActiveDiscountAuthInfo | null>(null);
+
+  // Polling for live status when discount authorization is PENDING via WhatsApp
+  useEffect(() => {
+    if (!activeDiscountAuth || activeDiscountAuth.status !== "PENDING") return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await apiClient.getDiscountAuthorization(activeDiscountAuth.id);
+        if (!res.ok || !res.data) return;
+        const updated = res.data;
+        if (updated && updated.status !== "PENDING") {
+          const approved = Number(updated.approvedDiscount) || 0;
+          setActiveDiscountAuth({
+            id: updated.id,
+            status: updated.status,
+            requestedDiscount: Number(updated.requestedDiscount) || 0,
+            approvedDiscount: approved,
+            reason: updated.reason,
+            responseNote: updated.responseNote,
+          });
+          if (updated.status === "APPROVED" || updated.status === "PARTIAL") {
+            setDiscountAmountState(approved);
+          } else {
+            setDiscountAmountState(0);
+          }
+        }
+      } catch {
+        // silent polling catch
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [activeDiscountAuth, apiClient]);
+
+  const checkDiscountStatus = async () => {
+    if (!activeDiscountAuth) return;
+    try {
+      const res = await apiClient.getDiscountAuthorization(activeDiscountAuth.id);
+      if (res.ok && res.data) {
+        const updated = res.data;
+        const approved = Number(updated.approvedDiscount) || 0;
+        setActiveDiscountAuth({
+          id: updated.id,
+          status: updated.status,
+          requestedDiscount: Number(updated.requestedDiscount) || 0,
+          approvedDiscount: approved,
+          reason: updated.reason,
+          responseNote: updated.responseNote,
+        });
+        if (updated.status === "APPROVED" || updated.status === "PARTIAL") {
+          setDiscountAmountState(approved);
+        } else if (updated.status === "REJECTED") {
+          setDiscountAmountState(0);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   const addItem = (item: IInventoryListItem, customPrice?: number) => {
     setItems((prev) => {
@@ -74,10 +140,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setDiscountAmountState(Math.max(0, discount));
   };
 
+  const clearDiscount = () => {
+    setActiveDiscountAuth(null);
+    setDiscountAmountState(0);
+  };
+
   const clearCart = () => {
     setItems([]);
     setSelectedCustomer(null);
-    setDiscountAmountState(0);
+    clearDiscount();
   };
 
   const hasItem = (itemId: string) => items.some((i) => i.inventoryItem.id === itemId);
@@ -96,6 +167,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         items,
         selectedCustomer,
         discountAmount,
+        activeDiscountAuth,
         subtotal,
         totalPreview,
         addItem,
@@ -103,6 +175,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         updateItemPrice,
         setCustomer,
         setDiscountAmount,
+        setActiveDiscountAuth,
+        clearDiscount,
+        checkDiscountStatus,
         clearCart,
         hasItem,
       }}

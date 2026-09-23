@@ -1,18 +1,23 @@
-import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import React, { useState } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
 import type { BackendSaleCreatedResponse } from "@ireader/contracts";
 import { IPAD_THEME } from "../../theme/tokens";
 import { Button } from "../ui/Button";
 import { MobilePrinterService } from "../../services/PrinterService";
 import { formatCurrency } from "../../utils/formatters";
+import { useAuth } from "../../contexts/AuthContext";
 
 interface SaleConfirmationProps {
   sale: BackendSaleCreatedResponse | null;
   onNewSale: () => void;
+  onOpenWhatsApp?: (phone?: string, name?: string) => void;
 }
 
-export function SaleConfirmation({ sale, onNewSale }: SaleConfirmationProps) {
+export function SaleConfirmation({ sale, onNewSale, onOpenWhatsApp }: SaleConfirmationProps) {
+  const { apiClient } = useAuth();
   const printerService = React.useMemo(() => new MobilePrinterService(), []);
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
+  const [whatsAppNotice, setWhatsAppNotice] = useState<string | null>(null);
 
   if (!sale) {
     return (
@@ -33,6 +38,49 @@ export function SaleConfirmation({ sale, onNewSale }: SaleConfirmationProps) {
       </View>
     );
   }
+
+  const customerWhatsapp = sale.customer?.whatsapp;
+  const customerName = sale.customer?.name || "Estimado cliente";
+
+  const handleSendWhatsAppReceipt = async () => {
+    if (!customerWhatsapp) {
+      setWhatsAppNotice("⚠️ El cliente no tiene número de WhatsApp registrado.");
+      return;
+    }
+
+    setIsSendingWhatsApp(true);
+    setWhatsAppNotice(null);
+
+    const itemsText = (sale.items || [])
+      .map((it) => `• ${it.model || "Equipo"} - ${formatCurrency(it.salePrice)}`)
+      .join("\n");
+
+    const messageContent =
+      `¡Hola ${customerName}! Muchas gracias por tu compra.\n\n` +
+      `🧾 Folio de Venta: ${sale.saleNumber || sale.saleId}\n` +
+      `💰 Total: ${formatCurrency(sale.total)} MXN\n` +
+      `💳 Método de pago: ${sale.paymentMethod || "Contado"}\n\n` +
+      `📦 Artículos:\n${itemsText}\n\n` +
+      `Cualquier duda con tu garantía, estamos para servirte. ¡Que disfrutes tu equipo!`;
+
+    try {
+      const res = await apiClient.sendChatMessage({
+        phone: customerWhatsapp,
+        content: messageContent,
+        recipientName: customerName,
+      });
+
+      if (res.ok) {
+        setWhatsAppNotice(`✅ Recibo enviado por WhatsApp a ${customerWhatsapp}`);
+      } else {
+        setWhatsAppNotice(`⚠️ No se pudo enviar WhatsApp: ${res.error || "Error de conexión"}`);
+      }
+    } catch {
+      setWhatsAppNotice("⚠️ Error al conectar con el servicio de WhatsApp.");
+    } finally {
+      setIsSendingWhatsApp(false);
+    }
+  };
 
   const handleReprintReceipt = () => {
     void printerService.printReceipt({
@@ -105,20 +153,80 @@ export function SaleConfirmation({ sale, onNewSale }: SaleConfirmationProps) {
           )}
         </View>
 
+        {whatsAppNotice && (
+          <View
+            style={{
+              width: "100%",
+              backgroundColor: whatsAppNotice.startsWith("✅")
+                ? "rgba(34, 197, 94, 0.15)"
+                : "rgba(245, 158, 11, 0.15)",
+              borderWidth: 1,
+              borderColor: whatsAppNotice.startsWith("✅")
+                ? "rgba(34, 197, 94, 0.4)"
+                : "rgba(245, 158, 11, 0.4)",
+              padding: 12,
+              borderRadius: 12,
+              marginBottom: 16,
+            }}
+          >
+            <Text
+              style={{
+                color: whatsAppNotice.startsWith("✅") ? "#86efac" : "#fde047",
+                fontSize: 13,
+                fontWeight: "600",
+                textAlign: "center",
+              }}
+            >
+              {whatsAppNotice}
+            </Text>
+          </View>
+        )}
+
         <View style={styles.buttonStack}>
+          {Boolean(customerWhatsapp) && (
+            <Button
+              title={isSendingWhatsApp ? "Enviando por WhatsApp..." : "📱 Enviar Recibo por WhatsApp"}
+              variant="secondary"
+              size="lg"
+              loading={isSendingWhatsApp}
+              onPress={handleSendWhatsAppReceipt}
+              accessibilityLabel="Enviar Recibo por WhatsApp"
+            />
+          )}
+
+          {Boolean(customerWhatsapp) && onOpenWhatsApp && (
+            <TouchableOpacity
+              style={{
+                width: "100%",
+                paddingVertical: 12,
+                borderRadius: IPAD_THEME.radius.lg,
+                backgroundColor: "rgba(37, 211, 102, 0.12)",
+                borderWidth: 1,
+                borderColor: "rgba(37, 211, 102, 0.3)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              onPress={() => onOpenWhatsApp(customerWhatsapp, customerName)}
+            >
+              <Text style={{ color: "#22c55e", fontSize: 14, fontWeight: "700" }}>
+                💬 Abrir Chat de WhatsApp
+              </Text>
+            </TouchableOpacity>
+          )}
+
           <Button
-            title="🖨️ Reprint Thermal Receipt"
+            title="🖨️ Imprimir Ticket Térmico"
             variant="secondary"
             size="lg"
             onPress={handleReprintReceipt}
-            accessibilityLabel="Reprint Thermal Receipt"
+            accessibilityLabel="Imprimir Ticket Térmico"
           />
           <Button
-            title="Start Next POS Sale →"
+            title="Iniciar Nueva Venta →"
             variant="primary"
             size="lg"
             onPress={onNewSale}
-            accessibilityLabel="Start Next POS Sale"
+            accessibilityLabel="Iniciar Nueva Venta"
           />
         </View>
       </View>

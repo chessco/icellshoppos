@@ -57,6 +57,7 @@ export function CheckoutSheet({
     items,
     selectedCustomer,
     discountAmount,
+    activeDiscountAuth,
     subtotal,
     totalPreview,
     clearCart,
@@ -94,6 +95,13 @@ export function CheckoutSheet({
       return;
     }
 
+    if (activeDiscountAuth && activeDiscountAuth.status === "PENDING") {
+      setErrorMessage(
+        "No se puede finalizar la venta mientras la solicitud de descuento por WhatsApp siga pendiente de aprobación."
+      );
+      return;
+    }
+
     if (!customerName.trim()) {
       setErrorMessage("Customer name is required for authoritative record.");
       return;
@@ -125,6 +133,8 @@ export function CheckoutSheet({
       paymentBreakdown: { [paymentMethod]: totalPreview },
       notes: notes.trim() || undefined,
       soldBy: activeSeller.name || session?.email || "iPad POS",
+      authorizationId: activeDiscountAuth?.id,
+      discount: activeDiscountAuth?.approvedDiscount ?? (discountAmount > 0 ? discountAmount : undefined),
       items: items.map((i) => ({
         inventoryItemId: i.inventoryItem.id,
         imei: i.inventoryItem.imei || i.inventoryItem.serialNumber || i.inventoryItem.id,
@@ -228,8 +238,44 @@ export function CheckoutSheet({
 
             {discountAmount > 0 && (
               <View style={styles.calcRow}>
-                <Text style={styles.discountLabel}>Discount</Text>
+                <Text style={styles.discountLabel}>
+                  {activeDiscountAuth ? "Descuento Autorizado" : "Discount"}
+                </Text>
                 <Text style={styles.discountVal}>-{formatCurrency(discountAmount)}</Text>
+              </View>
+            )}
+
+            {activeDiscountAuth && (
+              <View
+                style={{
+                  backgroundColor:
+                    activeDiscountAuth.status === "APPROVED" || activeDiscountAuth.status === "PARTIAL"
+                      ? "rgba(34, 197, 94, 0.12)"
+                      : "rgba(245, 158, 11, 0.12)",
+                  padding: 8,
+                  borderRadius: 8,
+                  marginTop: 6,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: "700",
+                    color:
+                      activeDiscountAuth.status === "APPROVED" || activeDiscountAuth.status === "PARTIAL"
+                        ? "#4ade80"
+                        : "#fcd34d",
+                  }}
+                >
+                  {activeDiscountAuth.status === "APPROVED" && "✅ Aprobado por Administrador"}
+                  {activeDiscountAuth.status === "PARTIAL" && "ℹ️ Aprobación Parcial"}
+                  {activeDiscountAuth.status === "PENDING" && "⏳ Esperando Autorización WhatsApp"}
+                </Text>
+                {activeDiscountAuth.responseNote && (
+                  <Text style={{ fontSize: 10, color: "#cbd5e1", marginTop: 2, fontStyle: "italic" }}>
+                    &quot;{activeDiscountAuth.responseNote}&quot;
+                  </Text>
+                )}
               </View>
             )}
 
