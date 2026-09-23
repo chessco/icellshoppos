@@ -1012,12 +1012,17 @@ export default function SalesPage() {
           <section className="rounded-2xl border border-[#e6d6c6] bg-white p-3 md:p-4">
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               <input
+                id="customer-name-input"
                 value={customerName}
                 onChange={(event) => handleCustomerNameChange(event.target.value)}
                 list="customer-list"
-                placeholder="Customer name"
+                placeholder="Customer name *"
                 required
-                className="rounded-xl border border-[#e6d6c6] bg-[#fffaf3] px-3 py-2 text-sm outline-none focus:border-[#1f1a16]"
+                className={`rounded-xl border bg-[#fffaf3] px-3 py-2 text-sm outline-none focus:border-[#1f1a16] ${
+                  cart.length > 0 && !customerName.trim()
+                    ? "border-amber-500 ring-2 ring-amber-200"
+                    : "border-[#e6d6c6]"
+                }`}
               />
               <select
                 value={customerTypeQuickFilter}
@@ -1038,7 +1043,7 @@ export default function SalesPage() {
               <input
                 value={customerEmail}
                 onChange={(event) => setCustomerEmail(event.target.value)}
-                placeholder="Customer Email"
+                placeholder="Customer Email (optional)"
                 className="rounded-xl border border-[#e6d6c6] bg-[#fffaf3] px-3 py-2 text-sm outline-none focus:border-[#1f1a16]"
               />
               <div className="grid grid-cols-[100px_1fr] gap-2">
@@ -1059,13 +1064,18 @@ export default function SalesPage() {
                   ))}
                 </select>
                 <input
+                  id="customer-whatsapp-input"
                   value={customerWhatsappNumber}
                   onChange={(event) => setCustomerWhatsappNumber(normalizeWhatsappDigits(event.target.value))}
-                  placeholder="WhatsApp 10 digits"
+                  placeholder="WhatsApp 10 digits *"
                   inputMode="numeric"
                   maxLength={10}
                   required
-                  className="rounded-xl border border-[#e6d6c6] bg-[#fffaf3] px-3 py-2 text-sm outline-none focus:border-[#1f1a16]"
+                  className={`rounded-xl border bg-[#fffaf3] px-3 py-2 text-sm outline-none focus:border-[#1f1a16] ${
+                    cart.length > 0 && !fullCustomerWhatsapp
+                      ? "border-amber-500 ring-2 ring-amber-200"
+                      : "border-[#e6d6c6]"
+                  }`}
                 />
               </div>
               <input
@@ -1471,6 +1481,60 @@ export default function SalesPage() {
                     </div>
                   )}
               </div>
+
+              {cart.length > 0 && (!customerName.trim() || !fullCustomerWhatsapp || !hasPaymentCoverage || activeDiscountAuth?.status === "PENDING") && (
+                <div className="mt-4 space-y-2 rounded-2xl border border-amber-200 bg-amber-50/90 p-3 text-xs text-amber-900 shadow-sm">
+                  <p className="font-semibold text-amber-950 flex items-center gap-1.5 text-sm">
+                    <span>⚠️</span> Datos requeridos para completar la venta:
+                  </p>
+                  
+                  {!customerName.trim() && (
+                    <div className="flex items-center justify-between gap-2 rounded-xl bg-white/80 p-2 border border-amber-200">
+                      <span>• <strong>Nombre del Cliente</strong> es obligatorio.</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const el = document.getElementById("customer-name-input");
+                          el?.focus();
+                          el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                        }}
+                        className="rounded-lg bg-amber-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-700 transition-colors"
+                      >
+                        Llenar Nombre ↑
+                      </button>
+                    </div>
+                  )}
+
+                  {!fullCustomerWhatsapp && (
+                    <div className="flex items-center justify-between gap-2 rounded-xl bg-white/80 p-2 border border-amber-200">
+                      <span>• <strong>WhatsApp (10 dígitos)</strong> es obligatorio para generar el recibo.</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const el = document.getElementById("customer-whatsapp-input");
+                          el?.focus();
+                          el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                        }}
+                        className="rounded-lg bg-amber-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-700 transition-colors"
+                      >
+                        Llenar WhatsApp ↑
+                      </button>
+                    </div>
+                  )}
+
+                  {!hasPaymentCoverage && (
+                    <div className="rounded-xl bg-white/80 p-2 border border-amber-200 text-amber-900">
+                      • Falta cubrir el saldo de la venta (Restante: <strong>{money(Math.max(0, remaining))}</strong>).
+                    </div>
+                  )}
+
+                  {activeDiscountAuth?.status === "PENDING" && (
+                    <div className="rounded-xl bg-white/80 p-2 border border-amber-200 text-amber-900">
+                      • Esperando que el administrador apruebe o rechace la solicitud de descuento por WhatsApp.
+                    </div>
+                  )}
+                </div>
+              )}
 
               <button
                 type="button"
