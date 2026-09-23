@@ -8,7 +8,8 @@ const en: I18nDictionary = {
   "lang.toggle": "Language",
 
   "sidebar.dashboard": "Dashboard",
-  "sidebar.fullInventory": "Inventory",
+  "sidebar.inventory": "Inventory",
+  "sidebar.fullInventory": "Full Inventory",
   "sidebar.labelDesigner": "Label Designer",
   "sidebar.sales": "Sales",
   "sidebar.salesCheckout": "Sales Checkout",
@@ -85,7 +86,8 @@ const es: I18nDictionary = {
   "lang.toggle": "Idioma",
 
   "sidebar.dashboard": "Panel",
-  "sidebar.fullInventory": "Inventario",
+  "sidebar.inventory": "Inventario",
+  "sidebar.fullInventory": "Inventario Completo",
   "sidebar.labelDesigner": "Diseñador de Etiquetas",
   "sidebar.sales": "Ventas",
   "sidebar.salesCheckout": "Punto de Venta",

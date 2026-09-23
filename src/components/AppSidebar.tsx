@@ -27,12 +27,25 @@ const isSubActive = (subHref: string, pathname: string) => {
   if (subHref === "/sales") {
     return pathname === "/sales";
   }
+  if (subHref === "/inventory") {
+    return pathname === "/inventory";
+  }
   return pathname === subHref || pathname.startsWith(`${subHref}/`);
 };
 
 const memberNavItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", labelKey: "sidebar.dashboard", match: "exact", primary: true },
-  { href: "/inventory", label: "Inventory", labelKey: "sidebar.fullInventory", match: "exact" },
+  {
+    href: "/inventory",
+    label: "Inventory",
+    labelKey: "sidebar.inventory",
+    match: "prefix",
+    children: [
+      { href: "/inventory", label: "Full Inventory", labelKey: "sidebar.fullInventory" },
+      { href: "/inventory-requests", label: "Inventory Requests", labelKey: "sidebar.inventoryRequests" },
+      { href: "/public-inventory-settings", label: "Public Inventory", labelKey: "sidebar.publicInventory" },
+    ],
+  },
   { href: "/label-designer", label: "Label Designer", labelKey: "sidebar.labelDesigner", match: "exact" },
   {
     href: "/sales",
@@ -50,13 +63,11 @@ const memberNavItems: NavItem[] = [
   { href: "/credit", label: "Credit", labelKey: "sidebar.credit", match: "exact" },
   { href: "/audit", label: "Register Audit", labelKey: "sidebar.registerAudit", match: "exact" },
   { href: "/repairs", label: "Repairs", labelKey: "sidebar.repairs", match: "prefix" },
-  { href: "/inventory-requests", label: "Inventory Requests", labelKey: "sidebar.inventoryRequests", match: "exact" },
   { href: "/purchase-orders", label: "Purchase Orders", labelKey: "sidebar.purchaseOrders", match: "exact" },
   { href: "/data", label: "Data Admin", labelKey: "sidebar.dataAdmin", match: "exact" },
   { href: "/billing", label: "Billing", labelKey: "sidebar.billing", match: "exact" },
   { href: "/profile", label: "Profile", labelKey: "sidebar.profile", match: "exact" },
   { href: "/profile/user-manual", label: "User Manual", labelKey: "sidebar.userManual", match: "exact" },
-  { href: "/public-inventory-settings", label: "Public Inventory", labelKey: "sidebar.publicInventory", match: "exact" },
   {
     href: "/settings",
     label: "Settings",
@@ -70,7 +81,17 @@ const memberNavItems: NavItem[] = [
 
 const superadminNavItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", labelKey: "sidebar.dashboard", match: "exact", primary: true },
-  { href: "/inventory", label: "Inventory", labelKey: "sidebar.fullInventory", match: "exact" },
+  {
+    href: "/inventory",
+    label: "Inventory",
+    labelKey: "sidebar.inventory",
+    match: "prefix",
+    children: [
+      { href: "/inventory", label: "Full Inventory", labelKey: "sidebar.fullInventory" },
+      { href: "/inventory-requests", label: "Inventory Requests", labelKey: "sidebar.inventoryRequests" },
+      { href: "/public-inventory-settings", label: "Public Inventory", labelKey: "sidebar.publicInventory" },
+    ],
+  },
   {
     href: "/sales",
     label: "Sales",
@@ -288,7 +309,7 @@ export default function AppSidebar({ pathname }: AppSidebarProps) {
   })();
 
   const getPendingBadge = (href: string) => {
-    if (href === "/inventory-requests" && pendingInventoryRequests > 0) {
+    if ((href === "/inventory" || href === "/inventory-requests") && pendingInventoryRequests > 0) {
       return pendingInventoryRequests;
     }
     if (href === "/purchase-orders" && pendingPurchaseRequests > 0) {
@@ -365,10 +386,16 @@ export default function AppSidebar({ pathname }: AppSidebarProps) {
                       <div className="ml-3 pl-2.5 border-l-2 border-[#bfd4ff] flex flex-col gap-1 my-1.5">
                         {item.children.map((sub) => {
                           const subActive = isSubActive(sub.href, pathname);
+                          const subBadge = getPendingBadge(sub.href);
                           return (
                             <Link key={sub.href} href={sub.href} className={subItemClass(subActive)}>
                               <span className="text-slate-400 text-[10px]">↳</span>
-                              <span>{t(sub.labelKey, sub.label)}</span>
+                              <span className="flex-1">{t(sub.labelKey, sub.label)}</span>
+                              {subBadge > 0 && (
+                                <span className="rounded-full bg-[#ef4444] px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
+                                  {subBadge}
+                                </span>
+                              )}
                             </Link>
                           );
                         })}
@@ -418,10 +445,16 @@ export default function AppSidebar({ pathname }: AppSidebarProps) {
                   <div className="ml-3 pl-2.5 border-l-2 border-[#bfd4ff] flex flex-col gap-1 my-1.5">
                     {item.children.map((sub) => {
                       const subActive = isSubActive(sub.href, pathname);
+                      const subBadge = getPendingBadge(sub.href);
                       return (
                         <Link key={sub.href} href={sub.href} className={subItemClass(subActive)}>
                           <span className="text-slate-400 text-[10px]">↳</span>
-                          <span>{t(sub.labelKey, sub.label)}</span>
+                          <span className="flex-1">{t(sub.labelKey, sub.label)}</span>
+                          {subBadge > 0 && (
+                            <span className="rounded-full bg-[#ef4444] px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
+                              {subBadge}
+                            </span>
+                          )}
                         </Link>
                       );
                     })}
