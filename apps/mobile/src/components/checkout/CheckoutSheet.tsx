@@ -124,7 +124,7 @@ export function CheckoutSheet({
     setErrorMessage(null);
 
     const salePayload = {
-      saleId: checkoutIdRef.current,
+      saleId: activeDiscountAuth?.draftSaleId || checkoutIdRef.current,
       customerName: customerName.trim(),
       customerEmail: customerEmail.trim().toLowerCase() || undefined,
       customerWhatsapp: phoneNorm.normalized,

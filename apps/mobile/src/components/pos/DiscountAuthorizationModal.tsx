@@ -101,6 +101,7 @@ export function DiscountAuthorizationModal({
         approvedDiscount: approved,
         reason: created.reason || reason.trim(),
         responseNote: created.responseNote,
+        draftSaleId: created.draftSaleId || draftSaleId,
       });
 
       if (created.status === "APPROVED" || created.status === "PARTIAL") {

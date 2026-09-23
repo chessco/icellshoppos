@@ -62,6 +62,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             approvedDiscount: approved,
             reason: updated.reason,
             responseNote: updated.responseNote,
+            draftSaleId: updated.draftSaleId || activeDiscountAuth.draftSaleId,
           });
           if (updated.status === "APPROVED" || updated.status === "PARTIAL") {
             setDiscountAmountState(approved);
@@ -91,6 +92,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           approvedDiscount: approved,
           reason: updated.reason,
           responseNote: updated.responseNote,
+          draftSaleId: updated.draftSaleId || activeDiscountAuth.draftSaleId,
         });
         if (updated.status === "APPROVED" || updated.status === "PARTIAL") {
           setDiscountAmountState(approved);

@@ -211,7 +211,7 @@ test("iPad POS: 1-tap handler immediately adds single item without opening confi
   // Simular el controlador de selección del POS en iPad
   const cart: IInventoryListItem[] = [];
   let configuratorOpenedFor: string | null = null;
-  let toastFeedback: string | null = null;
+  const feedback = { text: "" };
 
   const handleSelectGroup = (group: typeof singleGroup) => {
     if (group.items && group.items.length === 1) {
@@ -219,9 +219,9 @@ test("iPad POS: 1-tap handler immediately adds single item without opening confi
       if (item) {
         if (!cart.some((c) => c.id === item.id)) {
           cart.push(item);
-          toastFeedback = `✓ Agregado al ticket: ${item.model}`;
+          feedback.text = `✓ Agregado al ticket: ${item.model}`;
         } else {
-          toastFeedback = `ℹ️ ${item.model} ya está en el ticket`;
+          feedback.text = `ℹ️ ${item.model} ya está en el ticket`;
         }
         return;
       }
@@ -235,12 +235,12 @@ test("iPad POS: 1-tap handler immediately adds single item without opening confi
   assert.equal(configuratorOpenedFor, null, "El configurador NO debe abrirse para un producto con 1 solo ítem");
   assert.equal(cart.length, 1, "El ítem debe agregarse de inmediato al carrito con 1 tap");
   assert.equal(cart[0].id, "inv-1tap");
-  assert.ok(toastFeedback?.includes("Agregado al ticket"));
+  assert.ok(feedback.text.includes("Agregado al ticket"));
 
   // 2. Segundo tap sobre el mismo producto único ya en carrito -> feedback informativo sin duplicar
   handleSelectGroup(singleGroup);
   assert.equal(cart.length, 1, "No debe duplicar el ítem serializado");
-  assert.ok(toastFeedback?.includes("ya está en el ticket"));
+  assert.ok(feedback.text.includes("ya está en el ticket"));
 
   // 3. Tap en producto con múltiples ítems -> abre el configurador modal
   handleSelectGroup(multiGroup);

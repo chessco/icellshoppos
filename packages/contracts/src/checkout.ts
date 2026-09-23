@@ -59,6 +59,7 @@ export interface ActiveDiscountAuthInfo {
   approvedDiscount: number;
   reason: string;
   responseNote?: string | null;
+  draftSaleId?: string | null;
 }
 
 export interface BackendSaleCreatePayload {

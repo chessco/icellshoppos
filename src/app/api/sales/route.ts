@@ -356,8 +356,16 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // REGLA 8: Vinculada a una venta concreta
-      if (auth.draftSaleId && requestedSaleId && auth.draftSaleId !== requestedSaleId) {
+      // REGLA 8: Vinculada a una venta concreta. Si la autorización fue solicitada para una venta específica (ej. S-1001)
+      // no se debe permitir usarla en otra venta distinta (ej. S-9999).
+      // Si draftSaleId o requestedSaleId es un identificador temporal de sesión móvil (IPAD- o UUID),
+      // se considera la misma sesión de venta del dispositivo.
+      const isMobileDraftSession =
+        Boolean(auth.draftSaleId?.startsWith("IPAD-")) ||
+        Boolean(requestedSaleId?.startsWith("IPAD-")) ||
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestedSaleId || "");
+
+      if (auth.draftSaleId && requestedSaleId && auth.draftSaleId !== requestedSaleId && !isMobileDraftSession) {
         return NextResponse.json(
           { error: "La autorización no corresponde al identificador de esta venta." },
           { status: 400 }
