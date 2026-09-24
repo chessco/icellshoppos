@@ -122,6 +122,7 @@ const superadminNavItems: NavItem[] = [
       { href: "/admin/billing", label: "Billing", labelKey: "sidebar.billing" },
       { href: "/admin/plans", label: "Plans", labelKey: "sidebar.plans" },
       { href: "/admin/users", label: "Users", labelKey: "sidebar.users" },
+      { href: "/data", label: "Data Admin", labelKey: "sidebar.dataAdmin" },
       { href: "/admin/email-settings", label: "Email Settings", labelKey: "sidebar.emailSettings" },
       { href: "/messages", label: "Messages", labelKey: "sidebar.messages" },
       { href: "/settings/integrations", label: "Integrations", labelKey: "sidebar.integrations" },

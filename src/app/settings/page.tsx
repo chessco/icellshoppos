@@ -52,6 +52,12 @@ const settingsCards: SettingCard[] = [
     icon: "credit_card",
   },
   {
+    title: "ADMINISTRACIÓN DE DATOS",
+    description: "Proveedores, clientes, sucursales, precios, catálogo y recordatorios DIO.",
+    href: "/data",
+    icon: "database",
+  },
+  {
     title: "SEGURIDAD Y ACCESO",
     description: "Credenciales de acceso, contraseñas y doble autenticación.",
     href: "/profile",
@@ -131,6 +137,9 @@ export default function SettingsHubPage() {
                         )}
                         {card.icon === "credit_card" && (
                           <path d="M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z" />
+                        )}
+                        {card.icon === "database" && (
+                          <path d="M12 3C7.58 3 4 4.79 4 7v10c0 2.21 3.58 4 8 4s8-1.79 8-4V7c0-2.21-3.58-4-8-4zm0 2c3.87 0 6 1.5 6 2s-2.13 2-6 2-6-1.5-6-2 2.13-2 6-2zm6 12c0 .5-2.13 2-6 2s-6-1.5-6-2v-2.23c1.61.78 3.73 1.23 6 1.23s4.39-.45 6-1.23V17zm0-4c0 .5-2.13 2-6 2s-6-1.5-6-2v-2.23c1.61.78 3.73 1.23 6 1.23s4.39-.45 6-1.23V13z" />
                         )}
                         {card.icon === "lock" && (
                           <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z" />
