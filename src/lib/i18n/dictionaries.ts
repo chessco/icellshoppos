@@ -34,6 +34,7 @@ const en: I18nDictionary = {
   "sidebar.navigation": "Navigation",
   "sidebar.menu": "Menu",
   "sidebar.close": "Close",
+  "sidebar.logout": "Log Out",
 
   "landing.signIn": "Sign In",
   "landing.startFreeTrial": "Start Free Trial",
@@ -112,6 +113,7 @@ const es: I18nDictionary = {
   "sidebar.navigation": "Navegación",
   "sidebar.menu": "Menú",
   "sidebar.close": "Cerrar",
+  "sidebar.logout": "Salir",
 
   "landing.signIn": "Iniciar sesión",
   "landing.startFreeTrial": "Comenzar prueba gratis",

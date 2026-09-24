@@ -122,10 +122,10 @@ export function IPadSidebar({
           style={[styles.logoutButton, isCollapsed && styles.logoutButtonCollapsed]}
           onPress={() => void logout()}
           accessibilityRole="button"
-          accessibilityLabel="Sign out of iReader"
+          accessibilityLabel="Cerrar sesión"
         >
           <Text style={styles.logoutIcon}>🚪</Text>
-          {!isCollapsed && <Text style={styles.logoutText}>Sign Out</Text>}
+          {!isCollapsed && <Text style={styles.logoutText}>Salir</Text>}
         </TouchableOpacity>
       </View>
     </View>

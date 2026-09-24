@@ -24,6 +24,9 @@ type NavItem = {
 };
 
 const isSubActive = (subHref: string, pathname: string) => {
+  if (subHref === "#logout") {
+    return false;
+  }
   if (subHref === "/sales") {
     return pathname === "/sales";
   }
@@ -81,6 +84,7 @@ const memberNavItems: NavItem[] = [
       { href: "/messages", label: "Messages", labelKey: "sidebar.messages" },
       { href: "/settings/integrations", label: "Integrations", labelKey: "sidebar.integrations" },
       { href: "/profile/user-manual", label: "User Manual", labelKey: "sidebar.userManual" },
+      { href: "#logout", label: "Log Out", labelKey: "sidebar.logout" },
     ],
   },
 ];
@@ -127,6 +131,7 @@ const superadminNavItems: NavItem[] = [
       { href: "/messages", label: "Messages", labelKey: "sidebar.messages" },
       { href: "/settings/integrations", label: "Integrations", labelKey: "sidebar.integrations" },
       { href: "/profile/user-manual", label: "User Manual", labelKey: "sidebar.userManual" },
+      { href: "#logout", label: "Log Out", labelKey: "sidebar.logout" },
     ],
   },
 ];
@@ -173,6 +178,19 @@ export default function AppSidebar({ pathname }: AppSidebarProps) {
   const [isSuperadmin, setIsSuperadmin] = useState(false);
   const [canManageCommissions, setCanManageCommissions] = useState(false);
   const [imeicheck2Linked, setImeiCheck2Linked] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // offline fallback
+    } finally {
+      window.location.href = "/login";
+    }
+  };
 
   useEffect(() => {
     setMenuOpen(false);
@@ -401,10 +419,7 @@ export default function AppSidebar({ pathname }: AppSidebarProps) {
                   <div key={item.href} className="flex flex-col">
                     <Link href={item.href} className={itemClass(active, item.primary)}>
                       <span className="inline-flex items-center justify-between gap-2 w-full">
-                        <span className="inline-flex items-center gap-1.5">
-                          {item.labelKey === "sidebar.settings" && <span className="text-xs">⚙️</span>}
-                          <span>{t(item.labelKey, item.label)}</span>
-                        </span>
+                        <span>{t(item.labelKey, item.label)}</span>
                         <span className="inline-flex items-center gap-1.5">
                           {badgeCount > 0 && (
                             <span className="rounded-full bg-[#ef4444] px-2 py-0.5 text-[10px] font-bold leading-none text-white">
@@ -436,6 +451,23 @@ export default function AppSidebar({ pathname }: AppSidebarProps) {
                     {hasChildren && isOpen && (
                       <div className="ml-3 pl-2.5 border-l-2 border-[#bfd4ff] flex flex-col gap-1 my-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
                         {item.children!.map((sub) => {
+                          if (sub.href === "#logout") {
+                            return (
+                              <button
+                                key={sub.href}
+                                type="button"
+                                onClick={handleLogout}
+                                disabled={isLoggingOut}
+                                className="rounded-xl py-1 px-2.5 text-xs font-semibold transition flex items-center gap-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 text-left w-full cursor-pointer"
+                              >
+                                <span className="text-red-400 text-[10px]">↳</span>
+                                <span className="flex-1 flex items-center gap-1 font-bold">
+                                  <span>🚪</span>
+                                  <span>{isLoggingOut ? "..." : t(sub.labelKey, sub.label)}</span>
+                                </span>
+                              </button>
+                            );
+                          }
                           const subActive = isSubActive(sub.href, pathname);
                           const subBadge = getPendingBadge(sub.href);
                           return (
@@ -456,88 +488,128 @@ export default function AppSidebar({ pathname }: AppSidebarProps) {
                 );
               })}
             </nav>
+            <div className="mt-4 pt-3 border-t border-[#d6e4ff]">
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={isLoggingOut}
+                className="w-full flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition cursor-pointer"
+              >
+                <span className="text-base">🚪</span>
+                <span>{isLoggingOut ? "Cerrando sesión..." : t("sidebar.logout", "Salir")}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      <aside className="hidden border-r border-[#d6e4ff] bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(239,247,255,0.92))] p-3 md:block md:sticky md:top-0 md:h-screen">
-        <div className="px-2 py-2">
-          <Link
-            href="https://www.probuyer.org"
-            className="inline-flex items-center"
-          >
-            <img
-              src="/api/public/app-brand-logo"
-              alt="Website logo"
-              className="h-6 w-auto max-w-[160px] object-contain"
-            />
-          </Link>
-        </div>
-        <nav className="mt-2 grid gap-1">
-          {navItems.map((item) => {
-            const active = isActiveItem(item, pathname);
-            const badgeCount = getPendingBadge(item.href);
-            const hasChildren = Boolean(item.children && item.children.length > 0);
-            const isOpen = isSectionOpen(item.href, active);
-            return (
-              <div key={item.href} className="flex flex-col">
-                <Link href={item.href} className={itemClass(active, item.primary)}>
-                  <span className="inline-flex items-center justify-between gap-2 w-full">
-                    <span className="inline-flex items-center gap-1.5">
-                      {item.labelKey === "sidebar.settings" && <span className="text-xs">⚙️</span>}
+      <aside className="hidden border-r border-[#d6e4ff] bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(239,247,255,0.92))] p-3 md:flex md:flex-col md:justify-between md:sticky md:top-0 md:h-screen md:overflow-y-auto">
+        <div>
+          <div className="px-2 py-2">
+            <Link
+              href="https://www.probuyer.org"
+              className="inline-flex items-center"
+            >
+              <img
+                src="/api/public/app-brand-logo"
+                alt="Website logo"
+                className="h-6 w-auto max-w-[160px] object-contain"
+              />
+            </Link>
+          </div>
+          <nav className="mt-2 grid gap-1">
+            {navItems.map((item) => {
+              const active = isActiveItem(item, pathname);
+              const badgeCount = getPendingBadge(item.href);
+              const hasChildren = Boolean(item.children && item.children.length > 0);
+              const isOpen = isSectionOpen(item.href, active);
+              return (
+                <div key={item.href} className="flex flex-col">
+                  <Link href={item.href} className={itemClass(active, item.primary)}>
+                    <span className="inline-flex items-center justify-between gap-2 w-full">
                       <span>{t(item.labelKey, item.label)}</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      {badgeCount > 0 && (
-                        <span className="rounded-full bg-[#ef4444] px-2 py-0.5 text-[10px] font-bold leading-none text-white">
-                          {badgeCount}
-                        </span>
-                      )}
-                      {hasChildren && (
-                        <span
-                          role="button"
-                          tabIndex={0}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            toggleSection(item.href, active);
-                          }}
-                          className={`flex h-5 w-5 items-center justify-center rounded-md transition text-[10px] font-bold ${
-                            active ? "text-blue-200 hover:text-white hover:bg-white/10" : "text-slate-400 hover:text-[#1f3563] hover:bg-slate-200/60"
-                          }`}
-                          title={isOpen ? "Colapsar submenú" : "Expandir submenú"}
-                        >
-                          <span className={`inline-block transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`}>
-                            ▶
+                      <span className="inline-flex items-center gap-1.5">
+                        {badgeCount > 0 && (
+                          <span className="rounded-full bg-[#ef4444] px-2 py-0.5 text-[10px] font-bold leading-none text-white">
+                            {badgeCount}
                           </span>
-                        </span>
-                      )}
-                    </span>
-                  </span>
-                </Link>
-                {hasChildren && isOpen && (
-                  <div className="ml-3 pl-2.5 border-l-2 border-[#bfd4ff] flex flex-col gap-1 my-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
-                    {item.children!.map((sub) => {
-                      const subActive = isSubActive(sub.href, pathname);
-                      const subBadge = getPendingBadge(sub.href);
-                      return (
-                        <Link key={sub.href} href={sub.href} className={subItemClass(subActive)}>
-                          <span className="text-slate-400 text-[10px]">↳</span>
-                          <span className="flex-1">{t(sub.labelKey, sub.label)}</span>
-                          {subBadge > 0 && (
-                            <span className="rounded-full bg-[#ef4444] px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
-                              {subBadge}
+                        )}
+                        {hasChildren && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              toggleSection(item.href, active);
+                            }}
+                            className={`flex h-5 w-5 items-center justify-center rounded-md transition text-[10px] font-bold ${
+                              active ? "text-blue-200 hover:text-white hover:bg-white/10" : "text-slate-400 hover:text-[#1f3563] hover:bg-slate-200/60"
+                            }`}
+                            title={isOpen ? "Colapsar submenú" : "Expandir submenú"}
+                          >
+                            <span className={`inline-block transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`}>
+                              ▶
                             </span>
-                          )}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </nav>
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                  </Link>
+                  {hasChildren && isOpen && (
+                    <div className="ml-3 pl-2.5 border-l-2 border-[#bfd4ff] flex flex-col gap-1 my-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                      {item.children!.map((sub) => {
+                        if (sub.href === "#logout") {
+                          return (
+                            <button
+                              key={sub.href}
+                              type="button"
+                              onClick={handleLogout}
+                              disabled={isLoggingOut}
+                              className="rounded-xl py-1 px-2.5 text-xs font-semibold transition flex items-center gap-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 text-left w-full cursor-pointer"
+                            >
+                              <span className="text-red-400 text-[10px]">↳</span>
+                              <span className="flex-1 flex items-center gap-1 font-bold">
+                                <span>🚪</span>
+                                <span>{isLoggingOut ? "..." : t(sub.labelKey, sub.label)}</span>
+                              </span>
+                            </button>
+                          );
+                        }
+                        const subActive = isSubActive(sub.href, pathname);
+                        const subBadge = getPendingBadge(sub.href);
+                        return (
+                          <Link key={sub.href} href={sub.href} className={subItemClass(subActive)}>
+                            <span className="text-slate-400 text-[10px]">↳</span>
+                            <span className="flex-1">{t(sub.labelKey, sub.label)}</span>
+                            {subBadge > 0 && (
+                              <span className="rounded-full bg-[#ef4444] px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
+                                {subBadge}
+                              </span>
+                            )}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </nav>
+        </div>
+
+        <div className="pt-3 mt-4 border-t border-[#d6e4ff]">
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="w-full flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition cursor-pointer"
+            title={t("sidebar.logout", "Salir")}
+          >
+            <span className="text-base">🚪</span>
+            <span>{isLoggingOut ? "Cerrando sesión..." : t("sidebar.logout", "Salir")}</span>
+          </button>
+        </div>
       </aside>
     </>
   );
