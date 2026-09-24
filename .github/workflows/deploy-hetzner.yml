@@ -1,0 +1,40 @@
+name: Deploy to Hetzner
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Hetzner Production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: ${{ secrets.HETZNER_USER }}
+          key: ${{ secrets.HETZNER_SSH_KEY }}
+          port: ${{ secrets.HETZNER_PORT || 22 }}
+          script_stop: true
+          script: |
+            echo "🚀 [1/5] Actualizando repositorio..."
+            cd /opt/pitaya/icellshop
+            git pull origin main
+
+            echo "🔨 [2/5] Compilando contenedor icellshop-probuyer..."
+            docker compose --env-file .env.production -f docker-compose.prod.yml build icellshop-probuyer
+
+            echo "🔄 [3/5] Levantando contenedor actualizado..."
+            docker compose --env-file .env.production -f docker-compose.prod.yml up -d --no-deps icellshop-probuyer
+
+            echo "🗄️ [4/5] Ejecutando migraciones de Prisma..."
+            docker exec icellshop-probuyer npx prisma@6.4.1 migrate deploy
+
+            echo "🩺 [5/5] Verificando estado y salud..."
+            docker ps --filter name=icellshop-probuyer
+
+            echo "✅ Despliegue en Hetzner (probuyer.pitayacode.io) finalizado exitosamente."
