@@ -110,11 +110,11 @@ export function DiscountAuthorizationModal({
 
       if (res.agentTriggered) {
         setSuccessNotice(
-          `✅ Solicitud enviada. Notificación WhatsApp enviada al autorizador por ${formatCurrency(numericRequested)}. Esperando respuesta.`
+          `✅ Solicitud enviada. Notificación enviada al autorizador por ${formatCurrency(numericRequested)}. Esperando respuesta.`
         );
       } else if (res.agentError) {
         setSuccessNotice(
-          `⚠️ Solicitud registrada por ${formatCurrency(numericRequested)}, pero hubo demora en WhatsApp: ${res.agentError}. El autorizador puede revisarla en el sistema.`
+          `⚠️ Solicitud registrada por ${formatCurrency(numericRequested)}, pero hubo demora en el envío: ${res.agentError}. El autorizador puede revisarla en el sistema.`
         );
       } else {
         setSuccessNotice(
@@ -155,7 +155,7 @@ export function DiscountAuthorizationModal({
           <View style={styles.header}>
             <View>
               <Text style={styles.badge}>AUTORIZACIÓN DE DESCUENTO</Text>
-              <Text style={styles.title}>Descuento vía WhatsApp</Text>
+              <Text style={styles.title}>Autorización de Descuento</Text>
               <Text style={styles.subtitle}>
                 Solicita aprobación remota al administrador en tiempo real
               </Text>
@@ -213,7 +213,7 @@ export function DiscountAuthorizationModal({
                 {activeDiscountAuth.status === "PENDING" && (
                   <View style={styles.pendingDetails}>
                     <Text style={styles.pendingText}>
-                      Mensaje de autorización enviado al WhatsApp del administrador. El sistema verifica automáticamente cuando responde.
+                      Mensaje de autorización enviado al administrador. El sistema verifica automáticamente cuando responde.
                     </Text>
                     <View style={styles.actionRow}>
                       <TouchableOpacity
@@ -379,7 +379,7 @@ export function DiscountAuthorizationModal({
                     <ActivityIndicator color="#ffffff" />
                   ) : (
                     <Text style={styles.submitBtnText}>
-                      📱 Solicitar Autorización vía WhatsApp
+                      📱 Solicitar Autorización al Administrador
                     </Text>
                   )}
                 </TouchableOpacity>

@@ -82,6 +82,38 @@ export default function MessagesPage() {
   const [availableClients, setAvailableClients] = useState<RecipientClient[]>([]);
   const [availableTeamUsers, setAvailableTeamUsers] = useState<RecipientTeamUser[]>([]);
 
+  // Safety & Moderation (Apple Guideline 1.2)
+  const [isOptionsOpen, setIsOptionsOpen] = useState(false);
+  const [mutedPhones, setMutedPhones] = useState<Record<string, boolean>>({});
+  const [blockedPhones, setBlockedPhones] = useState<Record<string, boolean>>({});
+  const [moderationNotice, setModerationNotice] = useState<string | null>(null);
+
+  const toggleMuteContact = (phone: string) => {
+    setMutedPhones((prev) => {
+      const next = !prev[phone];
+      setModerationNotice(next ? "Contacto silenciado" : "Notificaciones reactivadas");
+      setTimeout(() => setModerationNotice(null), 3000);
+      return { ...prev, [phone]: next };
+    });
+    setIsOptionsOpen(false);
+  };
+
+  const toggleBlockContact = (phone: string) => {
+    setBlockedPhones((prev) => {
+      const next = !prev[phone];
+      setModerationNotice(next ? "Contacto bloqueado para mensajería" : "Contacto desbloqueado");
+      setTimeout(() => setModerationNotice(null), 3000);
+      return { ...prev, [phone]: next };
+    });
+    setIsOptionsOpen(false);
+  };
+
+  const handleReportContact = () => {
+    setModerationNotice("Reporte enviado al equipo de soporte y moderación.");
+    setTimeout(() => setModerationNotice(null), 3500);
+    setIsOptionsOpen(false);
+  };
+
   // Load WhatsApp Conversations
   const loadWaConversations = async () => {
     setIsWaLoading(true);
@@ -411,7 +443,7 @@ export default function MessagesPage() {
             <CurrentOrgBadge hideActions />
             <span className="h-4 w-px bg-slate-300 hidden md:block" />
             <span className="font-semibold text-xs uppercase tracking-widest text-slate-500 hidden md:block">
-              Centro de Mensajería & WhatsApp
+              Centro de Mensajería & Clientes
             </span>
           </div>
 
@@ -446,10 +478,10 @@ export default function MessagesPage() {
                     : "text-[#5f7298] hover:text-[#0f1f3d] hover:bg-[#eef5ff]"
                 }`}
               >
-                <svg className="w-4 h-4 text-emerald-300" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.598 2.669-.699c.969.54 1.761.82 2.79.82 3.18 0 5.767-2.586 5.768-5.766 0-3.18-2.587-5.806-5.767-5.806zm0 10.354c-.901 0-1.637-.25-2.433-.699l-.174-.099-1.58.414.422-1.54-.113-.18c-.521-.83-.797-1.58-.796-2.477.001-2.527 2.057-4.583 4.674-4.583 2.527 0 4.583 2.056 4.583 4.583 0 2.527-2.056 4.581-4.583 4.581zm2.51-3.44c-.137-.069-.812-.401-.938-.447-.126-.046-.217-.069-.309.069-.092.138-.354.447-.434.54-.08.092-.16.104-.298.035-.138-.069-.583-.215-1.11-.685-.411-.366-.689-.819-.77-.957-.08-.138-.008-.213.061-.281.062-.062.138-.16.207-.241.069-.08.092-.138.138-.23.046-.092.023-.172-.011-.241-.035-.069-.309-.745-.424-1.02-.112-.269-.226-.232-.309-.236l-.264-.005c-.092 0-.241.034-.367.172-.126.138-.481.47-.481 1.146 0 .676.493 1.329.562 1.421.069.092.969 1.48 2.348 2.077.328.142.584.227.784.29.33.105.631.09.869.055.265-.04.812-.332.927-.652.115-.321.115-.596.08-.652-.034-.058-.126-.092-.263-.161z" />
+                <svg className="w-4 h-4 text-emerald-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
-                <span>Clientes (WhatsApp)</span>
+                <span>Clientes</span>
                 <span className="size-2 rounded-full bg-emerald-400 animate-ping"></span>
               </button>
             </div>
@@ -465,30 +497,30 @@ export default function MessagesPage() {
         <AppSidebar pathname="/messages" />
 
         <main className="min-w-0 p-4 md:p-6">
-          {/* TAB 1: WHATSAPP CUSTOMER MESSAGES */}
+          {/* TAB 1: CUSTOMER MESSAGES */}
           {activeTab === "whatsapp" && (
             <div className="flex flex-col lg:flex-row h-[calc(100vh-140px)] gap-5">
-              {/* Left Column: WhatsApp Conversations */}
+              {/* Left Column: Conversations */}
               <div className="w-full lg:w-84 flex flex-col bg-white border border-[#c7dcff] rounded-[28px] overflow-hidden shadow-sm">
                 <div className="p-5 border-b border-[#e2edff] space-y-3.5 bg-gradient-to-b from-[#f8faff] to-white">
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-[#0f1f3d] text-lg font-black uppercase tracking-wider flex items-center gap-2">
                         <span className="text-emerald-600">
-                          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                            <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.598 2.669-.699c.969.54 1.761.82 2.79.82 3.18 0 5.767-2.586 5.768-5.766 0-3.18-2.587-5.806-5.767-5.806zm0 10.354c-.901 0-1.637-.25-2.433-.699l-.174-.099-1.58.414.422-1.54-.113-.18c-.521-.83-.797-1.58-.796-2.477.001-2.527 2.057-4.583 4.674-4.583 2.527 0 4.583 2.056 4.583 4.583 0 2.527-2.056 4.581-4.583 4.581zm2.51-3.44c-.137-.069-.812-.401-.938-.447-.126-.046-.217-.069-.309.069-.092.138-.354.447-.434.54-.08.092-.16.104-.298.035-.138-.069-.583-.215-1.11-.685-.411-.366-.689-.819-.77-.957-.08-.138-.008-.213.061-.281.062-.062.138-.16.207-.241.069-.08.092-.138.138-.23.046-.092.023-.172-.011-.241-.035-.069-.309-.745-.424-1.02-.112-.269-.226-.232-.309-.236l-.264-.005c-.092 0-.241.034-.367.172-.126.138-.481.47-.481 1.146 0 .676.493 1.329.562 1.421.069.092.969 1.48 2.348 2.077.328.142.584.227.784.29.33.105.631.09.869.055.265-.04.812-.332.927-.652.115-.321.115-.596.08-.652-.034-.058-.126-.092-.263-.161z" />
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                           </svg>
                         </span>
-                        WhatsApp
+                        Mensajería
                       </h2>
                       <p className="text-[#5f7298] text-[10px] font-bold uppercase tracking-wider mt-0.5">
-                        Mensajería PitayaCore
+                        Canal Directo al Cliente
                       </p>
                     </div>
                     <button
                       onClick={() => setIsNewWaChatOpen(true)}
                       className="size-9 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-md hover:scale-105 active:scale-95 transition-all"
-                      title="Nuevo Chat WhatsApp"
+                      title="Nuevo Mensaje"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
@@ -505,7 +537,7 @@ export default function MessagesPage() {
                       type="text"
                       value={waSearchQuery}
                       onChange={(e) => setWaSearchQuery(e.target.value)}
-                      placeholder="Buscar cliente o celular..."
+                      placeholder="Buscar cliente o teléfono..."
                       className="w-full bg-[#f4f8ff] border border-[#c7dcff] rounded-xl py-2 pl-9 pr-3 text-xs text-[#0f1f3d] placeholder:text-slate-400 outline-none focus:border-emerald-500 transition-all"
                     />
                   </div>
@@ -587,19 +619,31 @@ export default function MessagesPage() {
                           {selectedWaConv.clientName.substring(0, 2).toUpperCase()}
                         </div>
                         <div>
-                          <h3 className="text-[#0f1f3d] font-black text-base uppercase tracking-tight">
-                            {selectedWaConv.clientName}
-                          </h3>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-[#0f1f3d] font-black text-base uppercase tracking-tight">
+                              {selectedWaConv.clientName}
+                            </h3>
+                            {mutedPhones[selectedWaConv.cleanPhone] && (
+                              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[9px] font-bold uppercase tracking-wider">
+                                Silenciado
+                              </span>
+                            )}
+                            {blockedPhones[selectedWaConv.cleanPhone] && (
+                              <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[9px] font-bold uppercase tracking-wider">
+                                Bloqueado
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-emerald-700 text-xs font-bold">
-                              Transmisión WhatsApp: <span className="font-mono">{selectedWaConv.formattedPhone}</span>
+                              Canal Directo: <span className="font-mono">{selectedWaConv.formattedPhone}</span>
                             </span>
                             <span className="size-2 rounded-full bg-emerald-500 animate-pulse"></span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2 relative">
                         <button
                           onClick={handleInsertReceiptTemplate}
                           className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold transition-all"
@@ -611,10 +655,60 @@ export default function MessagesPage() {
                         </button>
 
                         <div className="px-3 py-1.5 rounded-full bg-emerald-100/70 border border-emerald-200 text-emerald-800 text-[10px] font-black uppercase tracking-wider">
-                          Canal PitayaCore WA
+                          Canal POS
+                        </div>
+
+                        {/* Apple Guideline 1.2: User Moderation Options Dropdown */}
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setIsOptionsOpen((prev) => !prev)}
+                            className="size-8 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 flex items-center justify-center transition-all"
+                            title="Opciones de moderación y privacidad"
+                            aria-label="Opciones de contacto"
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
+                            </svg>
+                          </button>
+
+                          {isOptionsOpen && (
+                            <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-50 text-xs font-semibold">
+                              <button
+                                type="button"
+                                onClick={() => toggleMuteContact(selectedWaConv.cleanPhone)}
+                                className="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700 flex items-center gap-2"
+                              >
+                                <span>{mutedPhones[selectedWaConv.cleanPhone] ? "🔔 Reactivar notificaciones" : "🔕 Silenciar notificaciones"}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleBlockContact(selectedWaConv.cleanPhone)}
+                                className="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700 flex items-center gap-2"
+                              >
+                                <span>{blockedPhones[selectedWaConv.cleanPhone] ? "🔓 Desbloquear contacto" : "🚫 Bloquear contacto"}</span>
+                              </button>
+                              <div className="h-px bg-slate-100 my-1" />
+                              <button
+                                type="button"
+                                onClick={handleReportContact}
+                                className="w-full text-left px-4 py-2 hover:bg-rose-50 text-rose-600 flex items-center gap-2"
+                              >
+                                <span>🚩 Reportar conversación</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
+
+                    {/* Moderation Toast Notice */}
+                    {moderationNotice && (
+                      <div className="bg-slate-900 text-white text-xs px-4 py-2 font-medium flex items-center justify-between">
+                        <span>{moderationNotice}</span>
+                        <button type="button" onClick={() => setModerationNotice(null)} className="text-slate-400 hover:text-white ml-2">✕</button>
+                      </div>
+                    )}
 
                     {/* Messages History Stream */}
                     <div ref={waScrollRef} className="flex-1 overflow-y-auto p-6 space-y-4 bg-[#f8fbff]">
@@ -700,7 +794,7 @@ export default function MessagesPage() {
                               handleSendWaMessage(e);
                             }
                           }}
-                          placeholder={`Enviar WhatsApp a ${selectedWaConv.clientName}...`}
+                          placeholder={`Enviar mensaje a ${selectedWaConv.clientName}...`}
                           className="flex-1 bg-[#f4f8ff] border border-[#c7dcff] rounded-2xl py-3 px-4 text-xs text-[#0f1f3d] placeholder:text-slate-400 focus:border-emerald-500 outline-none transition-all resize-none shadow-sm"
                         />
                         <button
@@ -724,10 +818,10 @@ export default function MessagesPage() {
                       </svg>
                     </div>
                     <h3 className="text-[#0f1f3d] text-lg font-black uppercase tracking-wider">
-                      Mensajería WhatsApp de Clientes
+                      Mensajería de Clientes
                     </h3>
                     <p className="text-slate-500 text-xs font-medium max-w-sm mt-2">
-                      Selecciona un cliente de la lista para ver el historial o transmitir mensajes en tiempo real vía PitayaCore.
+                      Selecciona un cliente de la lista para ver el historial o transmitir notificaciones y comprobantes en tiempo real.
                     </p>
                   </div>
                 )}

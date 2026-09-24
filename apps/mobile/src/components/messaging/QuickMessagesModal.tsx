@@ -11,6 +11,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  ActionSheetIOS,
+  Alert,
 } from "react-native";
 import { IPAD_THEME } from "../../theme/tokens";
 import { useAuth } from "../../contexts/AuthContext";
@@ -64,6 +66,70 @@ export function QuickMessagesModal({
   // Real conversations state with fallback defaults
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [messages, setMessages] = useState<Record<string, ChatMessageItem[]>>({});
+  const [mutedMap, setMutedMap] = useState<Record<string, boolean>>({});
+  const [blockedMap, setBlockedMap] = useState<Record<string, boolean>>({});
+
+  const handleOpenOptions = () => {
+    if (!selectedConversation) return;
+    const isMuted = mutedMap[selectedConversation.id];
+    const isBlocked = blockedMap[selectedConversation.id];
+
+    const options = [
+      isMuted ? "Reactivar notificaciones" : "Silenciar notificaciones",
+      isBlocked ? "Desbloquear contacto" : "Bloquear contacto",
+      "Reportar conversación",
+      "Cancelar",
+    ];
+
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options,
+          destructiveButtonIndex: 1,
+          cancelButtonIndex: 3,
+          title: `Opciones de contacto: ${selectedConversation.customerName}`,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 0) {
+            setMutedMap((prev) => ({ ...prev, [selectedConversation.id]: !prev[selectedConversation.id] }));
+            Alert.alert("Notificaciones", isMuted ? "Notificaciones reactivadas" : "Contacto silenciado");
+          } else if (buttonIndex === 1) {
+            setBlockedMap((prev) => ({ ...prev, [selectedConversation.id]: !prev[selectedConversation.id] }));
+            Alert.alert("Contacto", isBlocked ? "Contacto desbloqueado" : "Contacto bloqueado");
+          } else if (buttonIndex === 2) {
+            Alert.alert("Reporte enviado", "El equipo de moderación y soporte revisará la conversación.");
+          }
+        }
+      );
+    } else {
+      Alert.alert(
+        `Opciones: ${selectedConversation.customerName}`,
+        "Seleccione una acción:",
+        [
+          {
+            text: isMuted ? "Reactivar notificaciones" : "Silenciar notificaciones",
+            onPress: () => {
+              setMutedMap((prev) => ({ ...prev, [selectedConversation.id]: !prev[selectedConversation.id] }));
+              Alert.alert("Notificaciones", isMuted ? "Notificaciones reactivadas" : "Contacto silenciado");
+            },
+          },
+          {
+            text: isBlocked ? "Desbloquear" : "Bloquear",
+            style: "destructive",
+            onPress: () => {
+              setBlockedMap((prev) => ({ ...prev, [selectedConversation.id]: !prev[selectedConversation.id] }));
+              Alert.alert("Contacto", isBlocked ? "Contacto desbloqueado" : "Contacto bloqueado");
+            },
+          },
+          {
+            text: "Reportar",
+            onPress: () => Alert.alert("Reporte enviado", "El equipo de moderación revisará la conversación."),
+          },
+          { text: "Cancelar", style: "cancel" },
+        ]
+      );
+    }
+  };
 
   // 1. Load real conversations from backend
   const loadConversations = React.useCallback(async () => {
@@ -76,7 +142,7 @@ export function QuickMessagesModal({
         const loaded: ConversationItem[] = res.data.map((c: any) => ({
           id: String(c.cleanPhone || c.conversationId || c.id || c.phone || ""),
           phone: c.formattedPhone || c.cleanPhone || c.phone || (c.conversationId ? `+${c.conversationId}` : ""),
-          customerName: c.clientName || c.customerName || c.recipientName || (activeTab === "WHATSAPP" ? "Cliente WhatsApp" : "Compañero"),
+          customerName: c.clientName || c.customerName || c.recipientName || (activeTab === "WHATSAPP" ? "Cliente" : "Compañero"),
           lastMessage: c.lastMessage || c.content || "",
           updatedAt: c.updatedAt
             ? new Date(c.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -134,7 +200,7 @@ export function QuickMessagesModal({
       const targetConv: ConversationItem = {
         id: cleanId,
         phone: `+${cleanId}`,
-        customerName: initialCustomerName || "Cliente WhatsApp",
+        customerName: initialCustomerName || "Cliente",
         lastMessage: "Conversación directa POS",
         updatedAt: "Ahora",
       };
@@ -261,7 +327,7 @@ export function QuickMessagesModal({
     const newConv: ConversationItem = {
       id: cleanId,
       phone: `+${cleanId}`,
-      customerName: newChatName.trim() || "Cliente WhatsApp",
+      customerName: newChatName.trim() || "Cliente",
       lastMessage: "Nueva conversación iniciada",
       updatedAt: "Ahora",
     };
@@ -300,7 +366,7 @@ export function QuickMessagesModal({
                   </View>
                 </View>
                 <Text style={styles.headerSubtitle} numberOfLines={1}>
-                  Comunicación directa con clientes WhatsApp y equipo interno
+                  Comunicación directa con clientes y equipo interno
                 </Text>
               </View>
             </View>
@@ -350,7 +416,7 @@ export function QuickMessagesModal({
                       activeTab === "WHATSAPP" && styles.channelTabTextActive,
                     ]}
                   >
-                    💬 Clientes (WA)
+                    💬 Clientes
                   </Text>
                 </TouchableOpacity>
 
@@ -447,7 +513,12 @@ export function QuickMessagesModal({
                         {selectedConversation.customerName}
                       </Text>
                       <Text style={styles.chatCustomerPhone} numberOfLines={1}>
-                        {selectedConversation.phone} • En línea vía WhatsApp
+                        {selectedConversation.phone}
+                        {blockedMap[selectedConversation.id]
+                          ? " • 🚫 Bloqueado"
+                          : mutedMap[selectedConversation.id]
+                          ? " • 🔕 Silenciado"
+                          : " • Activo"}
                       </Text>
                     </View>
 
@@ -483,6 +554,15 @@ export function QuickMessagesModal({
                         }}
                       >
                         <Text style={styles.quickReceiptText}>🧾 Recibo</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.optionsBtn}
+                        onPress={handleOpenOptions}
+                        accessibilityRole="button"
+                        accessibilityLabel="Opciones de conversación"
+                      >
+                        <Text style={styles.optionsBtnText}>⋮</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -548,42 +628,50 @@ export function QuickMessagesModal({
                   </ScrollView>
 
                   {/* Message Composer Bar */}
-                  <KeyboardAvoidingView
-                    behavior={Platform.OS === "ios" ? "padding" : undefined}
-                    keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
-                  >
-                    <View style={styles.composerBar}>
-                      <TextInput
-                        style={styles.composerInput}
-                        placeholder="Escriba un mensaje para WhatsApp..."
-                        placeholderTextColor={IPAD_THEME.colors.textMuted}
-                        value={messageText}
-                        onChangeText={setMessageText}
-                        multiline
-                      />
-                      <TouchableOpacity
-                        style={[
-                          styles.sendBtn,
-                          (!messageText.trim() || isSending) && styles.sendBtnDisabled,
-                        ]}
-                        onPress={handleSendMessage}
-                        disabled={!messageText.trim() || isSending}
-                      >
-                        {isSending ? (
-                          <ActivityIndicator size="small" color="#ffffff" />
-                        ) : (
-                          <Text style={styles.sendBtnText}>Enviar</Text>
-                        )}
-                      </TouchableOpacity>
+                  {blockedMap[selectedConversation.id] ? (
+                    <View style={styles.blockedBanner}>
+                      <Text style={styles.blockedBannerText}>
+                        🚫 Contacto bloqueado. No se enviarán ni recibirán mensajes.
+                      </Text>
                     </View>
-                  </KeyboardAvoidingView>
+                  ) : (
+                    <KeyboardAvoidingView
+                      behavior={Platform.OS === "ios" ? "padding" : undefined}
+                      keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
+                    >
+                      <View style={styles.composerBar}>
+                        <TextInput
+                          style={styles.composerInput}
+                          placeholder="Escriba un mensaje para el cliente..."
+                          placeholderTextColor={IPAD_THEME.colors.textMuted}
+                          value={messageText}
+                          onChangeText={setMessageText}
+                          multiline
+                        />
+                        <TouchableOpacity
+                          style={[
+                            styles.sendBtn,
+                            (!messageText.trim() || isSending) && styles.sendBtnDisabled,
+                          ]}
+                          onPress={handleSendMessage}
+                          disabled={!messageText.trim() || isSending}
+                        >
+                          {isSending ? (
+                            <ActivityIndicator size="small" color="#ffffff" />
+                          ) : (
+                            <Text style={styles.sendBtnText}>Enviar</Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    </KeyboardAvoidingView>
+                  )}
                 </View>
               ) : (
                 <View style={styles.emptyChatPlaceholder}>
                   <Text style={styles.emptyPlaceholderIcon}>✉️</Text>
                   <Text style={styles.emptyPlaceholderTitle}>Seleccione una conversación</Text>
                   <Text style={styles.emptyPlaceholderSubtitle}>
-                    Comience a chatear o envíe recordatorios por WhatsApp a sus clientes.
+                    Comience a chatear o envíe recordatorios a sus clientes.
                   </Text>
                 </View>
               )}
@@ -596,7 +684,7 @@ export function QuickMessagesModal({
       <Modal visible={isNewChatModalOpen} transparent animationType="fade">
         <View style={styles.backdrop}>
           <View style={styles.newChatCard}>
-            <Text style={styles.newChatTitle}>Nuevo Chat de WhatsApp</Text>
+            <Text style={styles.newChatTitle}>Nuevo Mensaje a Cliente</Text>
             <Text style={styles.newChatSubtitle}>
               Ingrese el celular de 10 dígitos o seleccione un cliente
             </Text>
@@ -923,6 +1011,34 @@ const styles = StyleSheet.create({
     color: "#93c5fd",
     fontSize: 11,
     fontWeight: "700",
+  },
+  optionsBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  optionsBtnText: {
+    color: "#ffffff",
+    fontSize: 18,
+    fontWeight: "800",
+    lineHeight: 20,
+  },
+  blockedBanner: {
+    padding: 14,
+    backgroundColor: "rgba(239, 68, 68, 0.15)",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(239, 68, 68, 0.3)",
+    alignItems: "center",
+  },
+  blockedBannerText: {
+    color: "#fca5a5",
+    fontSize: 12,
+    fontWeight: "600",
   },
   messagesScroll: {
     flex: 1,

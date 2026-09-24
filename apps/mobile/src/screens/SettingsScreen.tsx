@@ -79,7 +79,7 @@ export function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Pro Buyer API Connection</Text>
           <Text style={styles.sectionSub}>
-            Authoritative backend endpoint for inventory, pricing, checkout, and WhatsApp messaging.
+            Authoritative backend endpoint for inventory, pricing, checkout, and customer messaging.
           </Text>
 
           <View style={{ flexDirection: "row", gap: 10, marginVertical: 12 }}>

@@ -227,7 +227,7 @@ export function AppleTouchPosView({
               style={styles.messagesLauncherBtn}
               onPress={onOpenMessages}
               accessibilityRole="button"
-              accessibilityLabel="Abrir Mensajería WhatsApp"
+              accessibilityLabel="Abrir Mensajería"
               activeOpacity={0.7}
             >
               <Text style={styles.messagesLauncherText}>✉️ Mensajes</Text>

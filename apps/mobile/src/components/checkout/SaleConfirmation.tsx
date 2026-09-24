@@ -44,7 +44,7 @@ export function SaleConfirmation({ sale, onNewSale, onOpenWhatsApp }: SaleConfir
 
   const handleSendWhatsAppReceipt = async () => {
     if (!customerWhatsapp) {
-      setWhatsAppNotice("⚠️ El cliente no tiene número de WhatsApp registrado.");
+      setWhatsAppNotice("⚠️ El cliente no tiene número de contacto registrado.");
       return;
     }
 
@@ -71,12 +71,12 @@ export function SaleConfirmation({ sale, onNewSale, onOpenWhatsApp }: SaleConfir
       });
 
       if (res.ok) {
-        setWhatsAppNotice(`✅ Recibo enviado por WhatsApp a ${customerWhatsapp}`);
+        setWhatsAppNotice(`✅ Recibo digital enviado a ${customerWhatsapp}`);
       } else {
-        setWhatsAppNotice(`⚠️ No se pudo enviar WhatsApp: ${res.error || "Error de conexión"}`);
+        setWhatsAppNotice(`⚠️ No se pudo enviar recibo: ${res.error || "Error de conexión"}`);
       }
     } catch {
-      setWhatsAppNotice("⚠️ Error al conectar con el servicio de WhatsApp.");
+      setWhatsAppNotice("⚠️ Error al conectar con el servicio de mensajería.");
     } finally {
       setIsSendingWhatsApp(false);
     }
@@ -185,12 +185,12 @@ export function SaleConfirmation({ sale, onNewSale, onOpenWhatsApp }: SaleConfir
         <View style={styles.buttonStack}>
           {Boolean(customerWhatsapp) && (
             <Button
-              title={isSendingWhatsApp ? "Enviando por WhatsApp..." : "📱 Enviar Recibo por WhatsApp"}
+              title={isSendingWhatsApp ? "Enviando Recibo..." : "📱 Enviar Recibo Digital"}
               variant="secondary"
               size="lg"
               loading={isSendingWhatsApp}
               onPress={handleSendWhatsAppReceipt}
-              accessibilityLabel="Enviar Recibo por WhatsApp"
+              accessibilityLabel="Enviar Recibo Digital"
             />
           )}
 
@@ -209,7 +209,7 @@ export function SaleConfirmation({ sale, onNewSale, onOpenWhatsApp }: SaleConfir
               onPress={() => onOpenWhatsApp(customerWhatsapp, customerName)}
             >
               <Text style={{ color: "#22c55e", fontSize: 14, fontWeight: "700" }}>
-                💬 Abrir Chat de WhatsApp
+                💬 Abrir Mensajería
               </Text>
             </TouchableOpacity>
           )}

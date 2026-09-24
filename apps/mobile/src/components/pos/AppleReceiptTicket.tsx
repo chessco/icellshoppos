@@ -92,7 +92,7 @@ export function AppleReceiptTicket({
             <TouchableOpacity
               style={styles.customerWaBtn}
               onPress={() => onOpenWhatsApp(selectedCustomer?.phone, selectedCustomer?.name)}
-              accessibilityLabel="Enviar WhatsApp al cliente"
+              accessibilityLabel="Enviar mensaje al cliente"
             >
               <Text style={styles.customerWaIcon}>💬</Text>
             </TouchableOpacity>
@@ -219,7 +219,7 @@ export function AppleReceiptTicket({
                 style={styles.requestDiscountBtn}
                 onPress={() => setIsDiscountModalOpen(true)}
               >
-                <Text style={styles.requestDiscountText}>🏷️ Solicitar Descuento vía WhatsApp</Text>
+                <Text style={styles.requestDiscountText}>🏷️ Solicitar Autorización de Descuento</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
@@ -234,7 +234,7 @@ export function AppleReceiptTicket({
               >
                 <View style={styles.discountStatusInfo}>
                   <Text style={styles.discountStatusTitle}>
-                    {activeDiscountAuth.status === "PENDING" && "⏳ Esperando WhatsApp..."}
+                    {activeDiscountAuth.status === "PENDING" && "⏳ Esperando autorización..."}
                     {activeDiscountAuth.status === "APPROVED" &&
                       `✅ Descuento: -${formatCurrency(activeDiscountAuth.approvedDiscount)}`}
                     {activeDiscountAuth.status === "PARTIAL" &&

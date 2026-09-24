@@ -229,7 +229,7 @@ export function CustomerSelectModal({ visible, onClose }: CustomerSelectModalPro
                   </View>
 
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>WhatsApp Phone (with Country Code) *</Text>
+                    <Text style={styles.label}>Teléfono Móvil (con lada) *</Text>
                     <TextInput
                       style={[styles.input, Boolean(phoneError) && styles.inputError]}
                       value={newPhone}

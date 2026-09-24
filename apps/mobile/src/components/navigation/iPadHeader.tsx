@@ -94,7 +94,7 @@ export function IPadHeader({
             style={styles.messagingBtn}
             onPress={onOpenMessages}
             accessibilityRole="button"
-            accessibilityLabel="Abrir mensajería WhatsApp"
+            accessibilityLabel="Abrir mensajería de clientes"
             activeOpacity={0.7}
           >
             <Text style={styles.messagingIcon}>✉️</Text>
