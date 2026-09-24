@@ -26,7 +26,7 @@ jobs:
             git pull origin main
 
             echo "🔨 [2/5] Compilando contenedor icellshop-probuyer..."
-            docker compose --env-file .env.production -f docker-compose.prod.yml build icellshop-probuyer
+            docker compose --env-file .env.production -f docker-compose.prod.yml build --no-cache icellshop-probuyer
 
             echo "🔄 [3/5] Levantando contenedor actualizado..."
             docker compose --env-file .env.production -f docker-compose.prod.yml up -d --no-deps icellshop-probuyer
