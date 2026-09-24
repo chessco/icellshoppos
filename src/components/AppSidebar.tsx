@@ -113,6 +113,9 @@ const superadminNavItems: NavItem[] = [
       { href: "/audit", label: "Register Audit", labelKey: "sidebar.registerAudit" },
     ],
   },
+  { href: "/credit", label: "Credit", labelKey: "sidebar.credit", match: "exact" },
+  { href: "/repairs", label: "Repairs", labelKey: "sidebar.repairs", match: "prefix" },
+  { href: "/purchase-orders", label: "Purchase Orders", labelKey: "sidebar.purchaseOrders", match: "exact" },
   {
     href: "/settings",
     label: "Settings",
