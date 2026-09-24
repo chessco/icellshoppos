@@ -79,4 +79,124 @@ export class MobileScannerCapability implements IScannerCapability {
 
     return { type: "QR_RAW", normalizedValue: trimmed };
   }
+
+  /**
+   * Parses unstructured OCR text from labels, boxes, and product tags.
+   * Differentiates contextually between:
+   * - IMEI (15 digits)
+   * - Serial Number (with contextual prefix or strict format)
+   * - SKU / Part Number (e.g. A2305, MU7T2AM/A, SKU:...)
+   * - Product title and descriptive specs (e.g. "Apple 20W USB-C Power Adapter")
+   */
+  parseOcrText(raw: string): ParsedOcrResult {
+    const rawLines = String(raw ?? "")
+      .split(/[\r\n]+/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    const fullText = rawLines.join(" ");
+
+    // 1. Check for IMEI in lines or tokens (15 digits, optionally with IMEI prefix)
+    for (const line of rawLines) {
+      const imeiPrefixMatch = line.match(/\b(?:IMEI|MEID)[:\s#]*([0-9]{15})\b/i);
+      if (imeiPrefixMatch) {
+        return {
+          isIdentifier: true,
+          identifierType: "IMEI",
+          identifierValue: imeiPrefixMatch[1],
+          cleanText: fullText,
+          rawLines,
+        };
+      }
+
+      // Check pure 15 digits line
+      const cleanDigits = line.replace(/[\s-]/g, "");
+      if (/^[0-9]{15}$/.test(cleanDigits)) {
+        return {
+          isIdentifier: true,
+          identifierType: "IMEI",
+          identifierValue: cleanDigits,
+          cleanText: fullText,
+          rawLines,
+        };
+      }
+    }
+
+    // 2. Check for Serial Number with contextual labels: "Serial", "S/N", "SN", "Serial No"
+    for (const line of rawLines) {
+      const serialPrefixMatch = line.match(
+        /\b(?:Serial(?:\s*(?:No|Number))?|S\/N|SN)[:\s#]+([A-Z0-9]{8,14})\b/i
+      );
+      if (serialPrefixMatch) {
+        return {
+          isIdentifier: true,
+          identifierType: "SERIAL",
+          identifierValue: serialPrefixMatch[1].toUpperCase(),
+          cleanText: fullText,
+          rawLines,
+        };
+      }
+    }
+
+    // 3. Check for SKU or Part Number prefix: "SKU:...", "Part No:...", "P/N:...", "Model: A..."
+    let extractedPartNumber: string | undefined = undefined;
+    for (const line of rawLines) {
+      const skuPrefixMatch = line.match(/\b(?:SKU|P\/N|Part\s*(?:No|Number)?|Item)[:\s#]+([A-Z0-9_-]{4,20})\b/i);
+      if (skuPrefixMatch) {
+        return {
+          isIdentifier: true,
+          identifierType: "SKU",
+          identifierValue: skuPrefixMatch[1].toUpperCase(),
+          cleanText: fullText,
+          rawLines,
+        };
+      }
+
+      const modelCodeMatch = line.match(/\b(?:Model|Mod|Modelo)[:\s#]+(A[0-9]{4}|[A-Z0-9/-]{5,12})\b/i);
+      if (modelCodeMatch) {
+        extractedPartNumber = modelCodeMatch[1].toUpperCase();
+      }
+    }
+
+    // 4. Extract Brand (Apple, Samsung, Anker, Belkin, etc.)
+    let extractedBrand: string | undefined = undefined;
+    const knownBrands = ["Apple", "Samsung", "Anker", "Belkin", "OtterBox", "Logitech", "Google", "Huawei", "Xiaomi", "Motorola"];
+    for (const brand of knownBrands) {
+      if (new RegExp(`\\b${brand}\\b`, "i").test(fullText)) {
+        extractedBrand = brand;
+        break;
+      }
+    }
+
+    // 5. Clean descriptive text: filter out noise words, barcodes, barcodes artifacts
+    const noiseWords = new Set(["unlocked", "original", "gen", "designed", "by", "in", "california", "assembled", "china"]);
+    const meaningfulLines = rawLines.filter((line) => {
+      const lower = line.toLowerCase();
+      if (/^[0-9%]+$/.test(line)) return false; // battery percentage or single numbers like 98%, 259
+      if (noiseWords.has(lower)) return false;
+      return true;
+    });
+
+    const cleanModel = meaningfulLines.slice(0, 3).join(" ").trim();
+
+    return {
+      isIdentifier: false,
+      brand: extractedBrand,
+      model: cleanModel || fullText,
+      partNumber: extractedPartNumber,
+      cleanText: fullText,
+      rawLines,
+    };
+  }
+}
+
+export interface ParsedOcrResult {
+  isIdentifier: boolean;
+  identifierType?: "IMEI" | "SERIAL" | "SKU";
+  identifierValue?: string;
+  brand?: string;
+  model?: string;
+  partNumber?: string;
+  cleanText: string;
+  rawLines: string[];
 }

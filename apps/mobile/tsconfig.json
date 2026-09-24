@@ -36,11 +36,15 @@
       ],
       "@mobile/*": [
         "./src/*"
+      ],
+      "apple-vision-ocr": [
+        "./modules/apple-vision-ocr/src/index.ts"
       ]
     }
   },
   "include": [
     "src/**/*",
+    "modules/**/*",
     "App.tsx",
     "index.ts",
     "test/**/*"

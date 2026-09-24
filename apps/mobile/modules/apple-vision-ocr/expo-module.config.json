@@ -1,0 +1,7 @@
+{
+  "name": "apple-vision-ocr",
+  "platforms": ["ios"],
+  "ios": {
+    "modules": ["AppleVisionOcrModule"]
+  }
+}

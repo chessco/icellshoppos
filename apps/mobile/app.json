@@ -12,9 +12,16 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.icellshop.ireaderpos",
       "infoPlist": {
-        "NSCameraUsageDescription": "iReader requires camera access to scan device IMEIs and barcodes for POS checkout."
+        "NSCameraUsageDescription": "iReader requires camera access to scan device IMEIs and barcodes for POS checkout.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
-    "plugins": []
+    "plugins": [],
+    "extra": {
+      "eas": {
+        "projectId": "3ad01e07-f5a2-4a86-bc2a-6ce315a5870c"
+      }
+    },
+    "owner": "chesssco"
   }
 }

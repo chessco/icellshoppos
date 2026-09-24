@@ -118,3 +118,40 @@ export interface InventoryOptionsResponse {
   modelCatalog: Record<string, ModelCatalogEntry>;
   pricingRules: PricingRuleEntry[];
 }
+
+// ─── Smart Scanner (Barcode + QR + OCR) Contracts ──────────────────────────
+
+export interface SmartScanParsedIdentifiers {
+  imei?: string | null;
+  serial?: string | null;
+  sku?: string | null;
+  model?: string | null;
+  partNumber?: string | null;
+  brand?: string | null;
+}
+
+export interface SmartScanSearchRequest {
+  scanType: "BARCODE" | "QR" | "OCR_TEXT";
+  rawText: string;
+  parsedIdentifiers?: SmartScanParsedIdentifiers;
+}
+
+export interface SmartScanCandidateItem {
+  id: string;
+  model: string;
+  capacity?: string | null;
+  color?: string | null;
+  sku?: string | null;
+  price: number;
+  confidence: number;
+  matchReason?: string;
+  rawItem?: IInventoryListItem;
+}
+
+export interface SmartScanSearchResponse {
+  scanType: "BARCODE" | "QR" | "OCR_TEXT";
+  matchType: "EXACT" | "CANDIDATE" | "AMBIGUOUS" | "NOT_FOUND";
+  resolvedItem?: IInventoryListItem;
+  candidates: SmartScanCandidateItem[];
+  rawText?: string;
+}

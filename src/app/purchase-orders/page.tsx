@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import AppSidebar from "@/components/AppSidebar";
+import CurrentOrgBadge from "@/components/CurrentOrgBadge";
 import { useT } from "@/components/LocaleProvider";
 import { formatCurrencyDisplay } from "@/lib/display-format";
 import { formatWhatsappForDisplay } from "@/lib/whatsapp";
@@ -268,6 +269,13 @@ export default function PurchaseOrdersPage() {
 
   return (
     <div className="app-shell">
+      {/* Top Navbar */}
+      <nav className="sticky top-0 z-30 border-b border-[#eddac7] bg-[rgba(255,250,243,0.95)] px-4 py-3 backdrop-blur md:px-6">
+        <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 text-sm text-[#5c4332]">
+          <CurrentOrgBadge />
+        </div>
+      </nav>
+
       <div className="grid w-full md:grid-cols-[190px_minmax(0,1fr)]">
         <AppSidebar pathname={pathname} />
         <main className="flex min-w-0 flex-col gap-6 px-6 py-10">
@@ -308,8 +316,14 @@ export default function PurchaseOrdersPage() {
               </div>
             </div>
           ) : orders.length === 0 ? (
-            <div className="rounded-lg border-2 border-[#eddac7] bg-white p-12 text-center">
-              <p className="text-[#6a4d3a]">{t("purchaseOrders.none", "No purchase orders")}</p>
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-[#d6c1ad] bg-white/70 p-12 text-center text-[#6a4d3a] shadow-sm">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#fff4ea] text-2xl mb-3">
+                📦
+              </div>
+              <p className="text-base font-semibold text-[#1f1a16]">{t("purchaseOrders.none", "Sin órdenes de compra")}</p>
+              <p className="mt-1 text-xs text-[#6a4d3a]">
+                No hay solicitudes de compra con el filtro seleccionado ({statusFilter}).
+              </p>
             </div>
           ) : (
             <div className="space-y-4">

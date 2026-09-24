@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 import AppSidebar from "@/components/AppSidebar";
 import CurrentOrgBadge from "@/components/CurrentOrgBadge";
 import { formatCurrencyDisplay } from "@/lib/display-format";
@@ -41,6 +42,7 @@ const parseMoney = (value: unknown) => {
 const money = (value: number) => formatCurrencyDisplay(Math.round(value));
 
 export default function DiscountAuthorizationsPage() {
+  const pathname = usePathname();
   const [authorizations, setAuthorizations] = useState<DiscountAuthorizationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"ALL" | "PENDING" | "APPROVED" | "PARTIAL" | "REJECTED">("PENDING");
@@ -255,112 +257,140 @@ export default function DiscountAuthorizationsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-[#fcfaf7] text-[#1f1a16]">
-      <AppSidebar pathname="/sales/authorizations" />
+    <div className="app-shell">
+      {/* Top Navbar */}
+      <nav className="sticky top-0 z-30 border-b border-[#eddac7] bg-[rgba(255,250,243,0.95)] px-4 py-3 backdrop-blur md:px-6">
+        <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 text-sm text-[#5c4332]">
+          <CurrentOrgBadge />
+        </div>
+      </nav>
 
-      <div className="flex flex-1 flex-col overflow-x-hidden">
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-[#e6d6c6] bg-white px-4 md:px-8">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-[#1f1a16]">Autorizaciones de Descuentos</h1>
-            <p className="text-xs text-[#6a4d3a]">Panel de revisión y aprobación de descuentos en Pro Buyer Web</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={fetchAuthStatusAndData}
-              disabled={loading}
-              className="rounded-full border border-[#d6c1ad] bg-[#fffaf3] px-3 py-1.5 text-xs font-semibold text-[#3b2a1e] hover:bg-[#f3eee6] disabled:opacity-50"
-            >
-              {loading ? "Actualizando..." : "↻ Actualizar"}
-            </button>
-            <CurrentOrgBadge />
-          </div>
-        </header>
+      <div className="grid w-full md:grid-cols-[190px_minmax(0,1fr)]">
+        <AppSidebar pathname={pathname} />
 
-        <main className="flex-1 p-4 md:p-8">
+        <main className="flex min-w-0 flex-col gap-5 px-4 py-6 md:gap-6 md:px-6 md:py-10">
+          {/* Header */}
+          <header className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-semibold text-[#1f1a16] md:text-3xl">
+                Autorizaciones de Descuentos
+              </h1>
+              <p className="text-sm text-[#6a4d3a]">
+                Panel de revisión y aprobación de descuentos en mostrador e iPad.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={fetchAuthStatusAndData}
+                disabled={loading}
+                className="rounded-full border border-[#d6c1ad] bg-[#fffaf3] px-4 py-2 text-sm font-medium text-[#3b2a1e] hover:bg-[#f3eee6] disabled:opacity-60 transition shadow-sm"
+              >
+                {loading ? "Actualizando..." : "↻ Actualizar"}
+              </button>
+            </div>
+          </header>
+
           {/* Notifications */}
           {errorMessage && (
-            <div className="mb-4 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-800">
+            <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-800">
               {errorMessage}
             </div>
           )}
           {successMessage && (
-            <div className="mb-4 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-800">
+            <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-800">
               {successMessage}
             </div>
           )}
 
           {!canApprove && (
-            <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
               <strong>Modo Consulta (Staff):</strong> Puedes ver el estado de las solicitudes generadas. Solo usuarios con permiso de autorización (Administradores / Superadmins) pueden responder a las solicitudes pendientes.
             </div>
           )}
 
-          {/* Filter Tabs */}
-          <div className="mb-6 flex flex-wrap items-center gap-2 border-b border-[#e6d6c6] pb-3">
-            <button
-              type="button"
-              onClick={() => setActiveTab("PENDING")}
-              className={`rounded-full px-4 py-2 text-xs font-bold transition ${
-                activeTab === "PENDING"
-                  ? "bg-[#1f1a16] text-white shadow-sm"
-                  : "bg-white text-[#5c4332] border border-[#e6d6c6] hover:bg-[#fff6ea]"
-              }`}
-            >
-              Pendientes ({counts.pending})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("APPROVED")}
-              className={`rounded-full px-4 py-2 text-xs font-bold transition ${
-                activeTab === "APPROVED"
-                  ? "bg-[#1f1a16] text-white shadow-sm"
-                  : "bg-white text-[#5c4332] border border-[#e6d6c6] hover:bg-[#fff6ea]"
-              }`}
-            >
-              Aprobadas ({counts.approved})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("PARTIAL")}
-              className={`rounded-full px-4 py-2 text-xs font-bold transition ${
-                activeTab === "PARTIAL"
-                  ? "bg-[#1f1a16] text-white shadow-sm"
-                  : "bg-white text-[#5c4332] border border-[#e6d6c6] hover:bg-[#fff6ea]"
-              }`}
-            >
-              Parciales ({counts.partial})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("REJECTED")}
-              className={`rounded-full px-4 py-2 text-xs font-bold transition ${
-                activeTab === "REJECTED"
-                  ? "bg-[#1f1a16] text-white shadow-sm"
-                  : "bg-white text-[#5c4332] border border-[#e6d6c6] hover:bg-[#fff6ea]"
-              }`}
-            >
-              Rechazadas ({counts.rejected})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("ALL")}
-              className={`rounded-full px-4 py-2 text-xs font-bold transition ${
-                activeTab === "ALL"
-                  ? "bg-[#1f1a16] text-white shadow-sm"
-                  : "bg-white text-[#5c4332] border border-[#e6d6c6] hover:bg-[#fff6ea]"
-              }`}
-            >
-              Todas ({counts.all})
-            </button>
-          </div>
+          {/* Filter Tabs Card */}
+          <section className="rounded-2xl border border-[#e6d6c6] bg-white p-3 shadow-sm md:p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("PENDING")}
+                  className={`rounded-full px-4 py-1.5 text-xs font-bold transition ${
+                    activeTab === "PENDING"
+                      ? "bg-[#1f1a16] text-white shadow-sm"
+                      : "bg-[#fffaf3] text-[#5c4332] border border-[#e6d6c6] hover:bg-[#fff6ea]"
+                  }`}
+                >
+                  Pendientes ({counts.pending})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("APPROVED")}
+                  className={`rounded-full px-4 py-1.5 text-xs font-bold transition ${
+                    activeTab === "APPROVED"
+                      ? "bg-[#1f1a16] text-white shadow-sm"
+                      : "bg-[#fffaf3] text-[#5c4332] border border-[#e6d6c6] hover:bg-[#fff6ea]"
+                  }`}
+                >
+                  Aprobadas ({counts.approved})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("PARTIAL")}
+                  className={`rounded-full px-4 py-1.5 text-xs font-bold transition ${
+                    activeTab === "PARTIAL"
+                      ? "bg-[#1f1a16] text-white shadow-sm"
+                      : "bg-[#fffaf3] text-[#5c4332] border border-[#e6d6c6] hover:bg-[#fff6ea]"
+                  }`}
+                >
+                  Parciales ({counts.partial})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("REJECTED")}
+                  className={`rounded-full px-4 py-1.5 text-xs font-bold transition ${
+                    activeTab === "REJECTED"
+                      ? "bg-[#1f1a16] text-white shadow-sm"
+                      : "bg-[#fffaf3] text-[#5c4332] border border-[#e6d6c6] hover:bg-[#fff6ea]"
+                  }`}
+                >
+                  Rechazadas ({counts.rejected})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("ALL")}
+                  className={`rounded-full px-4 py-1.5 text-xs font-bold transition ${
+                    activeTab === "ALL"
+                      ? "bg-[#1f1a16] text-white shadow-sm"
+                      : "bg-[#fffaf3] text-[#5c4332] border border-[#e6d6c6] hover:bg-[#fff6ea]"
+                  }`}
+                >
+                  Todas ({counts.all})
+                </button>
+              </div>
+
+              <div className="text-xs text-[#6a4d3a]">
+                Mostrando <strong className="text-[#1f1a16]">{filteredAuthorizations.length}</strong> solicitudes
+              </div>
+            </div>
+          </section>
 
           {/* Cards List */}
           {loading ? (
-            <div className="py-12 text-center text-sm text-[#6a4d3a]">Cargando solicitudes...</div>
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-[#e6d6c6] bg-white p-12 text-center shadow-sm">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#1f1a16] border-t-transparent mb-3" />
+              <p className="text-sm font-medium text-[#6a4d3a]">Cargando solicitudes de autorización...</p>
+            </div>
           ) : filteredAuthorizations.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-[#d6c1ad] bg-white p-12 text-center text-[#6a4d3a]">
-              No hay solicitudes de autorización con el filtro seleccionado.
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-[#d6c1ad] bg-white/70 p-12 text-center text-[#6a4d3a] shadow-sm">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#fff4ea] text-2xl mb-3">
+                🏷️
+              </div>
+              <p className="text-base font-semibold text-[#1f1a16]">No hay solicitudes con el filtro seleccionado</p>
+              <p className="mt-1 text-xs text-[#6a4d3a]">
+                No se encontraron solicitudes en estado "{activeTab === "ALL" ? "Todas" : activeTab.toLowerCase()}".
+              </p>
             </div>
           ) : (
             <div className="grid gap-6">

@@ -241,6 +241,13 @@ export function PosMasterScreen({
         visible={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
         onScanResult={handleScanMatch}
+        onProductConfirmed={(item) => {
+          addItem(item);
+          setSelectedItem(item);
+          setActiveRightTab("cart");
+          setIsScannerOpen(false);
+        }}
+        apiClient={apiClient}
         onSearchManually={(query) => {
           setCatalogSearch(query);
           setIsScannerOpen(false);

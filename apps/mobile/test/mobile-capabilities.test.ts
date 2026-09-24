@@ -48,3 +48,57 @@ test("MobileSecureStorageAdapter securely stores, retrieves, and removes session
   const deleted = await storage.getItem("auth_token");
   assert.equal(deleted, null);
 });
+
+test("MobileScannerCapability.parseOcrText correctly handles accessory labels without barcodes", () => {
+  const scanner = new MobileScannerCapability();
+
+  // Pure accessory label: "Apple 20W USB-C Power Adapter"
+  const accessoryLabel = `
+    Apple
+    20W USB-C Power Adapter
+    USB-C
+    Power Adapter
+  `;
+
+  const result = scanner.parseOcrText(accessoryLabel);
+  assert.equal(result.isIdentifier, false);
+  assert.equal(result.brand, "Apple");
+  assert.ok(result.model?.includes("20W USB-C Power Adapter"));
+});
+
+test("MobileScannerCapability.parseOcrText differentiates contextually between identifiers and descriptive text", () => {
+  const scanner = new MobileScannerCapability();
+
+  // Label with explicit IMEI printed
+  const labelWithImei = `
+    iPhone 16 Pro Max White Titanium 512GB
+    98%
+    259
+    Unlocked
+    IMEI: 355008281719272
+  `;
+  const imeiResult = scanner.parseOcrText(labelWithImei);
+  assert.equal(imeiResult.isIdentifier, true);
+  assert.equal(imeiResult.identifierType, "IMEI");
+  assert.equal(imeiResult.identifierValue, "355008281719272");
+
+  // Label with explicit Serial Number
+  const labelWithSerial = `
+    iPad Pro 11-inch M4 Space Black 256GB
+    Serial No: C39Z1234ABCD
+  `;
+  const serialResult = scanner.parseOcrText(labelWithSerial);
+  assert.equal(serialResult.isIdentifier, true);
+  assert.equal(serialResult.identifierType, "SERIAL");
+  assert.equal(serialResult.identifierValue, "C39Z1234ABCD");
+
+  // Descriptive text should NOT classify words like "TITANIUM" or "UNLOCKED" as serial
+  const descriptiveLabel = `
+    Apple Watch Ultra 2 Titanium Case
+    Unlocked
+    Original
+  `;
+  const descResult = scanner.parseOcrText(descriptiveLabel);
+  assert.equal(descResult.isIdentifier, false);
+  assert.equal(descResult.brand, "Apple");
+});

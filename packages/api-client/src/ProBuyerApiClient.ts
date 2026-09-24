@@ -13,6 +13,8 @@ import type {
   BackendSaleCreatePayload,
   BackendSaleCreatedResponse,
   IAuthToken,
+  SmartScanSearchRequest,
+  SmartScanSearchResponse,
 } from "@ireader/contracts";
 
 export interface IApiClientConfig {
@@ -274,5 +276,14 @@ export class ProBuyerApiClient {
       body: JSON.stringify(payload),
     });
     return { ok: res.ok, data: res.data?.message, error: res.error, providerResult: res.data?.providerResult };
+  }
+
+  // ─── Smart Scanner Search ─────────────────────────────────────────────────
+  async searchSmartCatalog(payload: SmartScanSearchRequest): Promise<{ ok: boolean; data?: SmartScanSearchResponse; error?: string }> {
+    const res = await this.request<SmartScanSearchResponse>("/api/inventory/search", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return { ok: res.ok, data: res.data, error: res.error };
   }
 }
