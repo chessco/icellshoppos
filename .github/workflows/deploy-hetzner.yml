@@ -32,7 +32,14 @@ jobs:
             docker compose --env-file .env.production -f docker-compose.prod.yml up -d --no-deps icellshop-probuyer
 
             echo "🗄️ [4/5] Ejecutando migraciones de Prisma..."
-            docker exec icellshop-probuyer npx prisma migrate deploy
+            # Pinned to match the Prisma version actually generating the
+            # client during the Docker build (confirmed in build logs) —
+            # the standalone runtime image doesn't bundle the prisma CLI
+            # itself, so an unpinned `npx prisma` grabs whatever is newest
+            # on the registry, which broke migrate deploy (npm installed
+            # prisma@7.10.0 mid-major-version-jump, still incompatible with
+            # prisma.config.ts's expected version).
+            docker exec icellshop-probuyer npx prisma@6.19.2 migrate deploy
 
             echo "🩺 [5/5] Verificando estado y salud..."
             docker ps --filter name=icellshop-probuyer
