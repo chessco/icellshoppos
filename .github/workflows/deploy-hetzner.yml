@@ -32,7 +32,7 @@ jobs:
             docker compose --env-file .env.production -f docker-compose.prod.yml up -d --no-deps icellshop-probuyer
 
             echo "🗄️ [4/5] Ejecutando migraciones de Prisma..."
-            docker exec icellshop-probuyer npx prisma@6.4.1 migrate deploy
+            docker exec icellshop-probuyer npx prisma migrate deploy
 
             echo "🩺 [5/5] Verificando estado y salud..."
             docker ps --filter name=icellshop-probuyer
