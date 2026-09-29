@@ -189,6 +189,7 @@ contextBridge.exposeInMainWorld("desktop", {
   usb: {
     status: () => ipcRenderer.invoke("usb:status"),
     devices: () => ipcRenderer.invoke("usb:devices"),
+    installDrivers: () => ipcRenderer.invoke("usb:install-drivers"),
   },
   notify: (title: string, body: string) => ipcRenderer.invoke("desktop:notify", title, body),
   openExternal: (url: string) => ipcRenderer.invoke("desktop:open-external", url),

@@ -226,6 +226,8 @@ export function App() {
   const [placeholderTitle, setPlaceholderTitle] = useState<string>("Dashboard");
   const [editingDevice, setEditingDevice] = useState<DesktopInventoryListItem | null>(null);
   const [usbStatus, setUsbStatus] = useState<AppleAdapterStatus | null>(null);
+  const [isInstallingDrivers, setIsInstallingDrivers] = useState(false);
+  const [driverInstallMessage, setDriverInstallMessage] = useState<string>("");
   const lastAutofillKeyRef = useRef<string>("");
   const [autoFilledFields, setAutoFilledFields] = useState<Partial<Record<IntakeFieldKey, "usb" | "derived">>>({});
 
@@ -405,6 +407,23 @@ export function App() {
       setStatus(`Refreshed from connected device ${firstDevice.udid.slice(0, 12)}...`);
     } catch (error: unknown) {
       setStatus(error instanceof Error ? error.message : "Failed to refresh from connected device.");
+    }
+  };
+
+  const handleInstallAppleDrivers = async () => {
+    setIsInstallingDrivers(true);
+    setDriverInstallMessage("Instalando drivers de Apple (Apple Devices)...");
+    try {
+      const result = await window.desktop.usb.installDrivers();
+      setDriverInstallMessage(result.message);
+      const next = await window.desktop.usb.status();
+      setUsbStatus(next);
+    } catch (error: unknown) {
+      setDriverInstallMessage(
+        error instanceof Error ? error.message : "No se pudo instalar los drivers de Apple."
+      );
+    } finally {
+      setIsInstallingDrivers(false);
     }
   };
 
@@ -1334,6 +1353,20 @@ export function App() {
           ) : activePage === "intake" || activePage === "edit-device" ? (
           <div className="intake-panel">
             <h2>{activePage === "edit-device" ? "Edit Device" : "Add Device"}</h2>
+            {isAddDevicePage && usbStatus && !usbStatus.appleMdsInstalled && !usbStatus.toolchainPresent ? (
+              <div className="card" style={{ marginBottom: "1rem" }}>
+                <p className="hint">
+                  No se detectan los drivers de Apple (Apple Mobile Device Support) en esta computadora, por lo
+                  que Windows no reconoce el iPhone al conectarlo por USB.
+                </p>
+                <div className="button-row">
+                  <button type="button" disabled={isInstallingDrivers} onClick={() => void handleInstallAppleDrivers()}>
+                    {isInstallingDrivers ? "Instalando..." : "Instalar drivers de Apple"}
+                  </button>
+                </div>
+                {driverInstallMessage ? <p className="hint">{driverInstallMessage}</p> : null}
+              </div>
+            ) : null}
             <div className="grid intake-grid">
               <label className={fieldClassName("deviceTypeId")}>
                 Device Type

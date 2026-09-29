@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, Notification, dialog, ipcMain, screen, shell 
 import { join } from "node:path";
 import Store from "electron-store";
 import { getAdapterStatus } from "./usb/AppleUsbAdapter.js";
+import { installAppleDrivers } from "./usb/AppleDriverInstaller.js";
 import { WindowsSafeStorageAdapter } from "./storage/WindowsSafeStorageAdapter.js";
 import type { ISecureStorage } from "./ports/ISecureStorage.js";
 
@@ -1500,6 +1501,10 @@ app.whenReady().then(async () => {
   ipcMain.handle("usb:devices", async () => {
     const status = await getAdapterStatus();
     return status.devices;
+  });
+
+  ipcMain.handle("usb:install-drivers", async () => {
+    return installAppleDrivers();
   });
 
   ipcMain.handle("desktop:notify", (_event, title: string, body: string) => {

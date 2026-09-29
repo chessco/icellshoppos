@@ -63,6 +63,9 @@ web-build/
 # Generic build directories
 build/
 **/build/
+# ...except electron-builder's buildResources dir (source assets: icons, NSIS scripts)
+!desktop/build/
+!desktop/build/**
 
 # --- 4. PYTHON ENVIRONMENTS & BYTECODE ---
 .venv/

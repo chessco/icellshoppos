@@ -1,6 +1,6 @@
 {
   "name": "icellshoppos-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "iReader by Pro Buyer — USB Apple device intake client",
   "main": "out/main/index.js",
@@ -34,6 +34,9 @@
         "nsis"
       ],
       "signAndEditExecutable": false
+    },
+    "nsis": {
+      "include": "build/installer.nsh"
     }
   },
   "scripts": {
@@ -59,7 +62,7 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^4.7.0",
-    "electron": "^31.7.7",
+    "electron": "31.7.7",
     "electron-builder": "^24.13.3",
     "electron-vite": "^2.3.0",
     "typescript": "^5.9.2",
