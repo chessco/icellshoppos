@@ -45,6 +45,7 @@ const en: I18nDictionary = {
   "landing.start14DayTrial": "Start 14-Day Trial",
   "landing.goToLogin": "Go To Login",
   "landing.dashboard": "Dashboard",
+  "landing.downloadWindowsApp": "Download Windows App",
 
   "purchaseOrders.title": "Purchase Orders",
   "purchaseOrders.subtitle": "Purchase requests from customers",
@@ -124,6 +125,7 @@ const es: I18nDictionary = {
   "landing.start14DayTrial": "Iniciar prueba de 14 días",
   "landing.goToLogin": "Ir a iniciar sesión",
   "landing.dashboard": "Panel",
+  "landing.downloadWindowsApp": "Descargar App de Windows",
 
   "purchaseOrders.title": "Órdenes de Compra",
   "purchaseOrders.subtitle": "Solicitudes de compra de clientes",

@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth";
 import { LOCALE_COOKIE_NAME, resolveLocale } from "@/lib/i18n/config";
 import { translate } from "@/lib/i18n/dictionaries";
+import LanguageToggle from "@/components/LanguageToggle";
 
 export const metadata: Metadata = {
   title: "Pro Buyer — Smart POS for Cell Phone Resellers",
@@ -71,6 +72,7 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen px-5 py-8 sm:px-8 lg:px-12">
+      <LanguageToggle />
       <div className="mx-auto w-full max-w-6xl">
         <header className="rounded-3xl border border-[#d6e4ff] bg-[linear-gradient(135deg,rgba(255,255,255,0.95),rgba(231,244,255,0.92))] p-6 shadow-[0_20px_48px_rgba(37,99,235,0.14)] sm:p-10">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -86,12 +88,20 @@ export default async function HomePage() {
             </Link>
             <div className="flex flex-wrap gap-2">
               {isAuthenticated ? (
-                <Link
-                  href="/dashboard"
-                  className="rounded-full bg-[#2563eb] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1d4ed8]"
-                >
-                  {t("landing.dashboard", "Dashboard")}
-                </Link>
+                <>
+                  <Link
+                    href="/dashboard"
+                    className="rounded-full bg-[#2563eb] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1d4ed8]"
+                  >
+                    {t("landing.dashboard", "Dashboard")}
+                  </Link>
+                  <Link
+                    href="/ireader"
+                    className="rounded-full border border-[#bfd5ff] px-4 py-2 text-sm font-semibold text-[#12316d] hover:bg-[#eef5ff]"
+                  >
+                    {t("landing.downloadWindowsApp", "Download Windows App")}
+                  </Link>
+                </>
               ) : (
                 <>
                   <Link
@@ -125,12 +135,20 @@ export default async function HomePage() {
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 {isAuthenticated ? (
-                  <Link
-                    href="/dashboard"
-                    className="rounded-full bg-[#0f1f3d] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#152b54]"
-                  >
-                    {t("landing.dashboard", "Dashboard")}
-                  </Link>
+                  <>
+                    <Link
+                      href="/dashboard"
+                      className="rounded-full bg-[#0f1f3d] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#152b54]"
+                    >
+                      {t("landing.dashboard", "Dashboard")}
+                    </Link>
+                    <Link
+                      href="/ireader"
+                      className="rounded-full border border-[#bfd5ff] px-5 py-2.5 text-sm font-semibold text-[#12316d] hover:bg-[#eef5ff]"
+                    >
+                      {t("landing.downloadWindowsApp", "Download Windows App")}
+                    </Link>
+                  </>
                 ) : (
                   <>
                     <Link
@@ -187,12 +205,20 @@ export default async function HomePage() {
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             {isAuthenticated ? (
-              <Link
-                href="/dashboard"
-                className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-[#0f1f3d] hover:bg-[#eef5ff]"
-              >
-                {t("landing.dashboard", "Dashboard")}
-              </Link>
+              <>
+                <Link
+                  href="/dashboard"
+                  className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-[#0f1f3d] hover:bg-[#eef5ff]"
+                >
+                  {t("landing.dashboard", "Dashboard")}
+                </Link>
+                <Link
+                  href="/ireader"
+                  className="rounded-full border border-[#7ea2e6] px-5 py-2.5 text-sm font-semibold text-white hover:bg-white/10"
+                >
+                  {t("landing.downloadWindowsApp", "Download Windows App")}
+                </Link>
+              </>
             ) : (
               <>
                 <Link
