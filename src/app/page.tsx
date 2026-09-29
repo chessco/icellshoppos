@@ -87,21 +87,19 @@ export default async function HomePage() {
               />
             </Link>
             <div className="flex flex-wrap gap-2">
+              <Link
+                href="/ireader"
+                className="rounded-full border border-[#bfd5ff] px-4 py-2 text-sm font-semibold text-[#12316d] hover:bg-[#eef5ff]"
+              >
+                {t("landing.downloadWindowsApp", "Download Windows App")}
+              </Link>
               {isAuthenticated ? (
-                <>
-                  <Link
-                    href="/dashboard"
-                    className="rounded-full bg-[#2563eb] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1d4ed8]"
-                  >
-                    {t("landing.dashboard", "Dashboard")}
-                  </Link>
-                  <Link
-                    href="/ireader"
-                    className="rounded-full border border-[#bfd5ff] px-4 py-2 text-sm font-semibold text-[#12316d] hover:bg-[#eef5ff]"
-                  >
-                    {t("landing.downloadWindowsApp", "Download Windows App")}
-                  </Link>
-                </>
+                <Link
+                  href="/dashboard"
+                  className="rounded-full bg-[#2563eb] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1d4ed8]"
+                >
+                  {t("landing.dashboard", "Dashboard")}
+                </Link>
               ) : (
                 <>
                   <Link
@@ -134,21 +132,19 @@ export default async function HomePage() {
                   : "Pro Buyer is built for teams that buy, grade, price, and move phone inventory fast. Track devices by IMEI, manage purchase orders and sales, and keep one live source of truth across your business."}
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
+                <Link
+                  href="/ireader"
+                  className="rounded-full border border-[#bfd5ff] px-5 py-2.5 text-sm font-semibold text-[#12316d] hover:bg-[#eef5ff]"
+                >
+                  {t("landing.downloadWindowsApp", "Download Windows App")}
+                </Link>
                 {isAuthenticated ? (
-                  <>
-                    <Link
-                      href="/dashboard"
-                      className="rounded-full bg-[#0f1f3d] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#152b54]"
-                    >
-                      {t("landing.dashboard", "Dashboard")}
-                    </Link>
-                    <Link
-                      href="/ireader"
-                      className="rounded-full border border-[#bfd5ff] px-5 py-2.5 text-sm font-semibold text-[#12316d] hover:bg-[#eef5ff]"
-                    >
-                      {t("landing.downloadWindowsApp", "Download Windows App")}
-                    </Link>
-                  </>
+                  <Link
+                    href="/dashboard"
+                    className="rounded-full bg-[#0f1f3d] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#152b54]"
+                  >
+                    {t("landing.dashboard", "Dashboard")}
+                  </Link>
                 ) : (
                   <>
                     <Link
@@ -204,21 +200,19 @@ export default async function HomePage() {
               : "Instead of juggling spreadsheets and chat threads, Pro Buyer gives your team one operational system for inventory, checkout, customer records, organization controls, and subscription billing."}
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
+            <Link
+              href="/ireader"
+              className="rounded-full border border-[#7ea2e6] px-5 py-2.5 text-sm font-semibold text-white hover:bg-white/10"
+            >
+              {t("landing.downloadWindowsApp", "Download Windows App")}
+            </Link>
             {isAuthenticated ? (
-              <>
-                <Link
-                  href="/dashboard"
-                  className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-[#0f1f3d] hover:bg-[#eef5ff]"
-                >
-                  {t("landing.dashboard", "Dashboard")}
-                </Link>
-                <Link
-                  href="/ireader"
-                  className="rounded-full border border-[#7ea2e6] px-5 py-2.5 text-sm font-semibold text-white hover:bg-white/10"
-                >
-                  {t("landing.downloadWindowsApp", "Download Windows App")}
-                </Link>
-              </>
+              <Link
+                href="/dashboard"
+                className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-[#0f1f3d] hover:bg-[#eef5ff]"
+              >
+                {t("landing.dashboard", "Dashboard")}
+              </Link>
             ) : (
               <>
                 <Link
