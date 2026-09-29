@@ -35,6 +35,8 @@ jobs:
 
       - name: Package Windows installer (NSIS)
         working-directory: desktop
+        env:
+          USE_SYSTEM_7ZA: "true"
         run: npm run dist:win
 
       - name: Validate required artifacts exist
