@@ -191,6 +191,17 @@ contextBridge.exposeInMainWorld("desktop", {
     devices: () => ipcRenderer.invoke("usb:devices"),
     installDrivers: () => ipcRenderer.invoke("usb:install-drivers"),
   },
+  update: {
+    getStatus: () => ipcRenderer.invoke("update:get-status"),
+    check: () => ipcRenderer.invoke("update:check"),
+    download: () => ipcRenderer.invoke("update:download"),
+    install: () => ipcRenderer.invoke("update:install"),
+    onStatusChanged: (callback: (state: unknown) => void) => {
+      const listener = (_event: unknown, state: unknown) => callback(state);
+      ipcRenderer.on("update:status-changed", listener);
+      return () => ipcRenderer.removeListener("update:status-changed", listener);
+    },
+  },
   notify: (title: string, body: string) => ipcRenderer.invoke("desktop:notify", title, body),
   openExternal: (url: string) => ipcRenderer.invoke("desktop:open-external", url),
 });

@@ -17,6 +17,16 @@ type LoginForm = {
   password: string;
 };
 
+type UpdatePhase = "idle" | "checking" | "available" | "downloading" | "downloaded" | "not-available" | "error";
+
+type UpdateState = {
+  phase: UpdatePhase;
+  currentVersion: string;
+  availableVersion?: string;
+  downloadProgress?: number;
+  error?: string;
+};
+
 type IntakeForm = {
   deviceTypeId: string;
   imei: string;
@@ -228,6 +238,7 @@ export function App() {
   const [usbStatus, setUsbStatus] = useState<AppleAdapterStatus | null>(null);
   const [isInstallingDrivers, setIsInstallingDrivers] = useState(false);
   const [driverInstallMessage, setDriverInstallMessage] = useState<string>("");
+  const [updateState, setUpdateState] = useState<UpdateState | null>(null);
   const lastAutofillKeyRef = useRef<string>("");
   const [autoFilledFields, setAutoFilledFields] = useState<Partial<Record<IntakeFieldKey, "usb" | "derived">>>({});
 
@@ -425,6 +436,27 @@ export function App() {
     } finally {
       setIsInstallingDrivers(false);
     }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void window.desktop.update.getStatus().then((initial: UpdateState) => {
+      if (!cancelled) setUpdateState(initial);
+    });
+
+    const unsubscribe = window.desktop.update.onStatusChanged((next: UpdateState) => {
+      if (!cancelled) setUpdateState(next);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+
+  const handleRestartToUpdate = () => {
+    void window.desktop.update.install();
   };
 
   useEffect(() => {
@@ -1242,6 +1274,26 @@ export function App() {
               <p className="hint">State: {usbStatus?.connectionState ?? "disconnected"}</p>
             </div>
             <div className="desktop-top-nav__session">
+              {updateState?.phase === "downloaded" ? (
+                <button type="button" className="update-badge update-badge--ready" onClick={handleRestartToUpdate}>
+                  ⬆️ Reiniciar para actualizar ({updateState.availableVersion})
+                </button>
+              ) : updateState?.phase === "available" || updateState?.phase === "downloading" ? (
+                <span className="update-badge update-badge--busy">
+                  ⬆️ {updateState.phase === "downloading"
+                    ? `Descargando actualización... ${updateState.downloadProgress ?? 0}%`
+                    : "Actualización disponible"}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="update-badge"
+                  title={`iReader ${updateState?.currentVersion ?? ""} — Buscar actualizaciones`}
+                  onClick={() => void window.desktop.update.check()}
+                >
+                  🔄
+                </button>
+              )}
               {session ? (
                 <>
                   <div className="profile-chip">

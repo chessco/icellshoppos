@@ -3,6 +3,7 @@ import { join } from "node:path";
 import Store from "electron-store";
 import { getAdapterStatus } from "./usb/AppleUsbAdapter.js";
 import { installAppleDrivers } from "./usb/AppleDriverInstaller.js";
+import { appUpdater } from "./update/AppUpdater.js";
 import { WindowsSafeStorageAdapter } from "./storage/WindowsSafeStorageAdapter.js";
 import type { ISecureStorage } from "./ports/ISecureStorage.js";
 
@@ -403,6 +404,25 @@ app.whenReady().then(async () => {
   buildAppMenu();
   mainWindow = createWindow();
   void getAdapterStatus();
+
+  // Auto-update: never allowed to block startup or any POS flow. Only runs
+  // in packaged builds — `npm run dev` never checks for updates.
+  if (app.isPackaged) {
+    try {
+      appUpdater.init();
+      appUpdater.onStateChanged((state) => {
+        mainWindow?.webContents.send("update:status-changed", state);
+      });
+      void appUpdater.checkForUpdates();
+    } catch (err) {
+      console.error("[AppUpdater] Failed to initialize:", err);
+    }
+  }
+
+  ipcMain.handle("update:get-status", () => appUpdater.getStatus());
+  ipcMain.handle("update:check", () => appUpdater.checkForUpdates());
+  ipcMain.handle("update:download", () => appUpdater.downloadUpdate());
+  ipcMain.handle("update:install", () => appUpdater.quitAndInstall());
 
   ipcMain.handle("window:minimize", () => {
     mainWindow?.minimize();

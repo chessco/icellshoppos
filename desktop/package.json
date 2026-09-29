@@ -1,6 +1,6 @@
 {
   "name": "icellshoppos-desktop",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "private": true,
   "description": "iReader by Pro Buyer — USB Apple device intake client",
   "main": "out/main/index.js",
@@ -37,6 +37,10 @@
     },
     "nsis": {
       "include": "build/installer.nsh"
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "https://probuyer.pitayacode.io/downloads"
     }
   },
   "scripts": {
@@ -46,11 +50,13 @@
     "dist:mac": "electron-builder --mac",
     "pack:win-unpacked": "electron-builder --win dir --publish never",
     "release:win-zip": "node scripts/release-win-zip.mjs",
-    "publish:s3": "node scripts/publish-s3.mjs"
+    "publish:s3": "node scripts/publish-s3.mjs",
+    "publish:hetzner": "node scripts/publish-hetzner.mjs"
   },
   "dependencies": {
     "bplist-parser": "^0.3.2",
     "electron-store": "^10.0.1",
+    "electron-updater": "6.8.10",
     "lightweight-charts": "^4.2.3",
     "qrcode": "^1.5.4",
     "react": "^19.2.3",

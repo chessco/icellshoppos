@@ -178,6 +178,29 @@ html {
   gap: 8px;
 }
 
+.update-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid transparent;
+}
+
+.update-badge--busy {
+  background: #1a2333;
+  color: #9fb3d1;
+  border-color: #2c3b54;
+}
+
+.update-badge--ready {
+  background: #16331f;
+  color: #7fe3a0;
+  border-color: #2a5a3a;
+  cursor: pointer;
+}
+
 .desktop-top-nav__auth input {
   width: 160px;
   padding: 7px 9px;

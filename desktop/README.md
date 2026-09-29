@@ -24,11 +24,14 @@ npm run dist:win
 npm run dist:mac
 npm run release:win-zip
 npm run publish:s3
+npm run publish:hetzner
 ```
 
 `npm run release:win-zip` builds the desktop app, packages `dist/win-unpacked`, and creates `dist/win-unpacked-latest.zip` for upload.
 
-`npm run publish:s3` uploads the newest Windows installer `.exe`, its `.blockmap`, `latest.yml`, and `dist/win-unpacked-latest.zip` when present. Set `AWS_S3_BUCKET` or `S3_BUCKET`, and optionally `AWS_S3_PREFIX` or `S3_PREFIX` plus `AWS_REGION`.
+`npm run publish:s3` uploads the newest Windows installer `.exe`, its `.blockmap`, `latest.yml`, and `dist/win-unpacked-latest.zip` when present. Set `AWS_S3_BUCKET` or `S3_BUCKET`, and optionally `AWS_S3_PREFIX` or `S3_PREFIX` plus `AWS_REGION`. **Status: secondary/future — not the active distribution channel.**
+
+`npm run publish:hetzner` — **primary, active distribution channel.** Uploads the newest installer `.exe`, `.blockmap`, and `latest.yml` (in that order — `latest.yml` last, so clients never see it point at a file that isn't fully uploaded yet) via `scp` to the Hetzner server, into the directory the web app serves from at `https://probuyer.pitayacode.io/downloads/`. Requires `HETZNER_HOST` and `HETZNER_USER` (same values as the web app's own `.github/workflows/deploy-hetzner.yml` deploy secrets); optionally `HETZNER_SSH_KEY_PATH` (path to a local private key file) and `IREADER_RELEASES_REMOTE_DIR` (defaults to `/data/ireader-releases`, matching the `ireader_releases` Docker volume in `docker-compose.prod.yml`). No credentials are stored in this repo.
 
 ## Current implemented backend integration
 

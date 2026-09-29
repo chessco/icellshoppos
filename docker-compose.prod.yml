@@ -50,6 +50,8 @@ services:
       - DIO_CRON_SECRET=${DIO_CRON_SECRET:-}
     expose:
       - "3007"
+    volumes:
+      - /srv/ireader/releases:/data/ireader-releases
     deploy:
       resources:
         limits:

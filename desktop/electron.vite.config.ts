@@ -11,7 +11,13 @@ export default defineConfig({
         "@ireader/application": resolve("../packages/application/src/index.ts"),
       },
     },
-    plugins: [externalizeDepsPlugin()],
+    // electron-updater/electron-store/bplist-parser are pure-JS and hoisted to
+    // the monorepo root's node_modules — the packaged app has no node_modules
+    // at all (see build.files below), so externalizing them would leave a
+    // dangling `require()` that crashes on launch. Bundle them directly
+    // instead; only `electron` itself (and other truly native modules, none
+    // currently) needs to stay external.
+    plugins: [externalizeDepsPlugin({ exclude: ["electron-updater", "electron-store", "bplist-parser"] })],
   },
   preload: {
     resolve: {
