@@ -6,6 +6,7 @@
   "main": "out/main/index.js",
   "type": "module",
   "build": {
+    "npmRebuild": false,
     "directories": {
       "output": "dist",
       "buildResources": "build"
