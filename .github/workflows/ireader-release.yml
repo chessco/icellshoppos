@@ -22,6 +22,15 @@ jobs:
         with:
           node-version: "20"
 
+      # GitHub's windows-latest runners sometimes have Windows Defender
+      # quarantine/delete unsigned .exe files bundled inside node_modules
+      # right after npm install (a known runner flakiness, not specific to
+      # this repo) — this has been observed removing 7zip-bin's 7za.exe,
+      # which electron-builder needs to build the NSIS installer.
+      - name: Exclude workspace from Windows Defender
+        shell: powershell
+        run: Add-MpPreference -ExclusionPath "${{ github.workspace }}"
+
       # Root install: electron-updater/electron-store/bplist-parser are
       # hoisted to the workspace root in this npm-workspaces monorepo (see
       # docs/PHASE_A6_AUTO_UPDATE_FOUNDATION_REPORT.md §3.1) — installing
@@ -29,14 +38,25 @@ jobs:
       - name: Install workspace dependencies
         run: npm ci
 
+      # Defensive re-check regardless of the Defender exclusion above: if
+      # 7za.exe is still missing for any reason, reinstall just that
+      # package rather than failing deep inside electron-builder.
+      - name: Verify 7zip-bin binary is present
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f "node_modules/7zip-bin/win/x64/7za.exe" ]; then
+            echo "7za.exe missing after npm ci — reinstalling 7zip-bin..."
+            npm install --no-save 7zip-bin
+          fi
+          test -f "node_modules/7zip-bin/win/x64/7za.exe" || { echo "::error::7za.exe still missing after reinstall"; exit 1; }
+
       - name: Build main/preload/renderer
         working-directory: desktop
         run: npm run build
 
       - name: Package Windows installer (NSIS)
         working-directory: desktop
-        env:
-          USE_SYSTEM_7ZA: "true"
         run: npm run dist:win
 
       - name: Validate required artifacts exist
