@@ -13,7 +13,14 @@
       "bundleIdentifier": "com.icellshop.ireaderpos",
       "infoPlist": {
         "NSCameraUsageDescription": "iReader requires camera access to scan device IMEIs and barcodes for POS checkout.",
+        "NSBluetoothAlwaysUsageDescription": "iReader POS requires Bluetooth access to discover, connect, and process card payments with physical Stripe card readers.",
+        "NSBluetoothPeripheralUsageDescription": "iReader POS requires Bluetooth peripheral access for communicating with Stripe card readers.",
+        "NSLocationWhenInUseUsageDescription": "iReader POS requires location access to verify physical card reader location for fraud prevention and Stripe compliance.",
+        "NSLocalNetworkUsageDescription": "iReader POS requires local network access to discover and communicate with smart Stripe Readers (such as S700) on your local Wi-Fi.",
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "com.apple.developer.proximity-reader.payment.acceptance": true
       }
     },
     "plugins": [],

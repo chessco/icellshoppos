@@ -38,6 +38,8 @@ type SaleCreatePayload = {
   soldBy?: string;
   authorizationId?: string;
   discount?: number;
+  posPaymentIds?: string[];
+  paymentIntentId?: string;
   items: SaleItemInput[];
 };
 
@@ -485,6 +487,38 @@ export async function POST(request: NextRequest) {
             completedSaleId: createdSale.id,
           },
         });
+      }
+
+      // Attach any pre-authorized PosPayments to the finalized Sale
+      const paymentIdsToAttach = [
+        ...(body.posPaymentIds || []),
+      ].filter(Boolean);
+
+      if (paymentIdsToAttach.length > 0) {
+        await transaction.posPayment.updateMany({
+          where: {
+            id: { in: paymentIdsToAttach },
+            organizationId,
+          },
+          data: {
+            saleId: createdSale.id,
+          },
+        });
+      }
+
+      if (body.paymentIntentId) {
+        const stripeRecord = await transaction.stripePaymentRecord.findFirst({
+          where: {
+            stripePaymentIntentId: body.paymentIntentId,
+            organizationId,
+          },
+        });
+        if (stripeRecord) {
+          await transaction.posPayment.update({
+            where: { id: stripeRecord.posPaymentId },
+            data: { saleId: createdSale.id },
+          });
+        }
       }
 
       const saleItemsData = body.items.map((item) => {

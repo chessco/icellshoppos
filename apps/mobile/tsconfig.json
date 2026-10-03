@@ -16,8 +16,7 @@
     ],
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
+    "ignoreDeprecations": "5.0",
     "paths": {
       "react": [
         "./node_modules/@types/react"
@@ -48,6 +47,5 @@
     "App.tsx",
     "index.ts",
     "test/**/*"
-  ],
-  "extends": "expo/tsconfig.base"
+  ]
 }

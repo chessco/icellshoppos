@@ -6,3 +6,4 @@ export * from "./devices.ts";
 export * from "./tokens.ts";
 export * from "./storage.ts";
 export * from "./commissions.ts";
+export * from "./payments.ts";

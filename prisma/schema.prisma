@@ -7,6 +7,7 @@ model DeviceType {
 
   inventoryItems InventoryItem[]
 }
+
 model Payment {
   id              String   @id @default(uuid())
   organizationId  String
@@ -102,25 +103,26 @@ enum DiscountAuthorizationStatus {
 }
 
 model Organization {
-  id                     String             @id @default(uuid())
-  name                   String
-  slug                   String             @unique
-  status                 OrganizationStatus @default(active)
-  publicInventoryEnabled Boolean            @default(false)
-  publicInventoryColumns String?
-  modelCatalogJson       Json?
-  carrierOptionsJson     Json?
-  gradeOptionsJson       Json?
-  conditionOptionsJson   Json?
-  labelTemplateJson      Json?
-  receiptConfigJson      Json?
-  dioReminderJson        Json?
-  logoData               Bytes?
-  logoMimeType           String?
-  useUsdConversion       Boolean            @default(true)
-  repairCatalogJson      Json?
-  createdAt              DateTime           @default(now())
-  updatedAt              DateTime           @updatedAt
+  id                      String             @id @default(uuid())
+  name                    String
+  slug                    String             @unique
+  status                  OrganizationStatus @default(active)
+  publicInventoryEnabled  Boolean            @default(false)
+  publicInventoryColumns  String?
+  modelCatalogJson        Json?
+  carrierOptionsJson      Json?
+  gradeOptionsJson        Json?
+  conditionOptionsJson    Json?
+  labelTemplateJson       Json?
+  receiptConfigJson       Json?
+  dioReminderJson         Json?
+  logoData                Bytes?
+  logoMimeType            String?
+  useUsdConversion        Boolean            @default(true)
+  repairCatalogJson       Json?
+  paymentCapabilitiesJson Json?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
   memberships               Membership[]
   subscriptions             Subscription[]
@@ -143,28 +145,35 @@ model Organization {
   repairCustomers           RepairCustomer[]
   externalIntegrations      ExternalIntegrationCredential[]
   imeicheck2RequestLogs     ImeiCheck2RequestLog[]
-  outgoingInventoryRequests InventoryTransferRequest[] @relation("InventoryTransferSourceOrg")
-  incomingInventoryRequests InventoryTransferRequest[] @relation("InventoryTransferTargetOrg")
+  outgoingInventoryRequests InventoryTransferRequest[]      @relation("InventoryTransferSourceOrg")
+  incomingInventoryRequests InventoryTransferRequest[]      @relation("InventoryTransferTargetOrg")
   chatMessages              ChatMessage[]
   discountAuthorizations    DiscountAuthorization[]
+  posDevices                POSDevice[]
+  stripeReaders             StripeReader[]
+  posPayments               PosPayment[]
+  stripePaymentRecords      StripePaymentRecord[]
+  stripeWebhookEvents       StripeWebhookEvent[]
+  posRefunds                PosRefund[]
+  paymentHandoffs           PaymentHandoff[]
 }
 
 model ExternalIntegrationCredential {
-  id                String    @id @default(uuid())
-  organizationId    String
-  provider          String
-  email             String
-  apiKeyEncrypted   String
-  keyLast4          String
-  confirmationToken String?
-  tokenExpiresAt    DateTime?
+  id                 String    @id @default(uuid())
+  organizationId     String
+  provider           String
+  email              String
+  apiKeyEncrypted    String
+  keyLast4           String
+  confirmationToken  String?
+  tokenExpiresAt     DateTime?
   servicePricingJson Json?
   pricingUpdatedAt   DateTime?
-  balance           Decimal? @db.Decimal(12, 2)
-  balanceUpdatedAt  DateTime?
-  linkedAt          DateTime  @default(now())
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  balance            Decimal?  @db.Decimal(12, 2)
+  balanceUpdatedAt   DateTime?
+  linkedAt           DateTime  @default(now())
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -192,26 +201,31 @@ model ImeiCheck2RequestLog {
 }
 
 model User {
-  id           String     @id @default(uuid())
-  email        String     @unique
-  passwordHash String
-  fullName     String?
-  whatsapp     String?
-  preferredLanguage String @default("en")
-  status       UserStatus @default(active)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  id                String     @id @default(uuid())
+  email             String     @unique
+  passwordHash      String
+  fullName          String?
+  whatsapp          String?
+  preferredLanguage String     @default("en")
+  status            UserStatus @default(active)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 
-  memberships            Membership[]
-  auditLogs              AuditLog[]
-  emailVerificationCodes EmailVerificationCode[]
-  payments               Payment[]
-  creditLedgerEntries    CreditLedger[]
-  registerAudits         RegisterAudit[]
-  assignedRepairTickets  RepairTicket[]      @relation("RepairAssignedTechnician")
-  repairStatusLogs       RepairTicketStatusLog[]
+  memberships              Membership[]
+  auditLogs                AuditLog[]
+  emailVerificationCodes   EmailVerificationCode[]
+  payments                 Payment[]
+  creditLedgerEntries      CreditLedger[]
+  registerAudits           RegisterAudit[]
+  assignedRepairTickets    RepairTicket[]          @relation("RepairAssignedTechnician")
+  repairStatusLogs         RepairTicketStatusLog[]
   discountRequestsCreated  DiscountAuthorization[] @relation("DiscountRequestedBy")
   discountRequestsApproved DiscountAuthorization[] @relation("DiscountAuthorizedBy")
+  posPaymentsCreated       PosPayment[]            @relation("PosPaymentCreatedBy")
+  posRefundsRequested      PosRefund[]             @relation("PosRefundRequestedBy")
+  posRefundsAuthorized     PosRefund[]             @relation("PosRefundAuthorizedBy")
+  requestedHandoffs        PaymentHandoff[]        @relation("HandoffRequestedBy")
+  acceptedHandoffs         PaymentHandoff[]        @relation("HandoffAcceptedBy")
 }
 
 model EmailVerificationCode {
@@ -319,19 +333,19 @@ model SubscriptionItem {
 }
 
 model Customer {
-  id               String   @id @default(uuid())
+  id               String       @id @default(uuid())
   organizationId   String
   name             String
   email            String?
   whatsapp         String?
   customerType     CustomerType @default(retail)
-  defaultPriceTier String   @default("Price")
-  status           String   @default("Active")
-  creditEnabled    Boolean  @default(false)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  defaultPriceTier String       @default("Price")
+  status           String       @default("Active")
+  creditEnabled    Boolean      @default(false)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
-  organization  Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sales         Sale[]
   creditLedger  CreditLedger[]
   repairTickets RepairTicket[]
@@ -362,7 +376,7 @@ model PartsSupplier {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   repairTickets RepairTicket[]
 
   @@unique([organizationId, name])
@@ -401,15 +415,20 @@ model RepairCustomer {
 }
 
 model Site {
-  id             String   @id @default(uuid())
-  organizationId String
-  name           String
-  status         String   @default("Active")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                      String   @id @default(uuid())
+  organizationId          String
+  name                    String
+  status                  String   @default("Active")
+  stripeLocationId        String?
+  paymentCapabilitiesJson Json?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   inventoryItems InventoryItem[]
+  posDevices     POSDevice[]
+  stripeReaders  StripeReader[]
+  paymentHandoffs PaymentHandoff[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -519,52 +538,55 @@ model Sale {
   creditLedger              CreditLedger[]
   completedRepairs          RepairTicket[]
   discountAuthorizations    DiscountAuthorization[]
+  posPayments               PosPayment[]
+  posRefunds                PosRefund[]
+  paymentHandoffs           PaymentHandoff[]
 
   @@unique([organizationId, saleNumber])
   @@index([organizationId, createdAt])
 }
 
 model RepairTicket {
-  id                  String       @id @default(uuid())
-  organizationId      String
-  customerId          String?
+  id                   String       @id @default(uuid())
+  organizationId       String
+  customerId           String?
   assignedTechnicianId String?
-  completedSaleId     String?
-  partsSupplierId     String?
-    repairCustomerId    String?
-  repairId            String       @default(cuid())
-  repairNumber        String
-  brand               String
-  model               String
-  color               String?
-  imei                String?
-  extrasJson          Json?
-  notes               String?
-  intakeFailuresJson  Json?
-  intakeDiagnosisText String?
-  possibleFixText     String?
-  diagnosisText       String?
-  diagnosisPending    Boolean      @default(false)
-  quotedTotal         Decimal?     @db.Decimal(12, 2)
-  partsCost           Decimal?     @db.Decimal(12, 2)
-  stage               RepairStage  @default(receive)
-  status              RepairStatus @default(received)
-  customerName        String
-  customerWhatsapp    String
-  customerEmail       String?
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
-  readyForPickupAt    DateTime?
-  completedAt         DateTime?
+  completedSaleId      String?
+  partsSupplierId      String?
+  repairCustomerId     String?
+  repairId             String       @default(cuid())
+  repairNumber         String
+  brand                String
+  model                String
+  color                String?
+  imei                 String?
+  extrasJson           Json?
+  notes                String?
+  intakeFailuresJson   Json?
+  intakeDiagnosisText  String?
+  possibleFixText      String?
+  diagnosisText        String?
+  diagnosisPending     Boolean      @default(false)
+  quotedTotal          Decimal?     @db.Decimal(12, 2)
+  partsCost            Decimal?     @db.Decimal(12, 2)
+  stage                RepairStage  @default(receive)
+  status               RepairStatus @default(received)
+  customerName         String
+  customerWhatsapp     String
+  customerEmail        String?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  readyForPickupAt     DateTime?
+  completedAt          DateTime?
 
-  organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  customer            Customer?              @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  assignedTechnician  User?                  @relation("RepairAssignedTechnician", fields: [assignedTechnicianId], references: [id], onDelete: SetNull)
-  completedSale       Sale?                  @relation(fields: [completedSaleId], references: [id], onDelete: SetNull)
-  partsSupplier       PartsSupplier?         @relation(fields: [partsSupplierId], references: [id], onDelete: SetNull)
-    repairCustomer      RepairCustomer?        @relation(fields: [repairCustomerId], references: [id], onDelete: SetNull)
-  parts               RepairTicketPart[]
-  statusLogs          RepairTicketStatusLog[]
+  organization       Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer           Customer?               @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  assignedTechnician User?                   @relation("RepairAssignedTechnician", fields: [assignedTechnicianId], references: [id], onDelete: SetNull)
+  completedSale      Sale?                   @relation(fields: [completedSaleId], references: [id], onDelete: SetNull)
+  partsSupplier      PartsSupplier?          @relation(fields: [partsSupplierId], references: [id], onDelete: SetNull)
+  repairCustomer     RepairCustomer?         @relation(fields: [repairCustomerId], references: [id], onDelete: SetNull)
+  parts              RepairTicketPart[]
+  statusLogs         RepairTicketStatusLog[]
 
   @@unique([organizationId, repairId])
   @@unique([organizationId, repairNumber])
@@ -591,13 +613,13 @@ model RepairTicketPart {
 }
 
 model RepairTicketStatusLog {
-  id             String       @id @default(uuid())
-  repairTicketId String
+  id              String       @id @default(uuid())
+  repairTicketId  String
   changedByUserId String?
-  stage          RepairStage
-  status         RepairStatus
-  notes          String?
-  createdAt      DateTime     @default(now())
+  stage           RepairStage
+  status          RepairStatus
+  notes           String?
+  createdAt       DateTime     @default(now())
 
   repairTicket RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
   changedBy    User?        @relation(fields: [changedByUserId], references: [id], onDelete: SetNull)
@@ -716,20 +738,20 @@ model CreditLedger {
 }
 
 model RegisterAudit {
-  id                    String   @id @default(uuid())
-  organizationId        String
-  auditedByUserId       String
-  periodStartAt         DateTime
-  periodEndAt           DateTime @default(now())
-  expectedCashAmount    Decimal  @db.Decimal(12, 2)
-  countedCashAmount     Decimal  @db.Decimal(12, 2)
-  cashDifferenceAmount  Decimal  @db.Decimal(12, 2)
-  expectedTransferAmount Decimal @db.Decimal(12, 2)
-  countedTransferAmount  Decimal @db.Decimal(12, 2)
-  transferDifferenceAmount Decimal @db.Decimal(12, 2)
-  notes                 String?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                       String   @id @default(uuid())
+  organizationId           String
+  auditedByUserId          String
+  periodStartAt            DateTime
+  periodEndAt              DateTime @default(now())
+  expectedCashAmount       Decimal  @db.Decimal(12, 2)
+  countedCashAmount        Decimal  @db.Decimal(12, 2)
+  cashDifferenceAmount     Decimal  @db.Decimal(12, 2)
+  expectedTransferAmount   Decimal  @db.Decimal(12, 2)
+  countedTransferAmount    Decimal  @db.Decimal(12, 2)
+  transferDifferenceAmount Decimal  @db.Decimal(12, 2)
+  notes                    String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   auditedBy    User         @relation(fields: [auditedByUserId], references: [id], onDelete: Cascade)
@@ -767,7 +789,7 @@ model ChatMessage {
   id                String   @id @default(uuid())
   organizationId    String
   channel           String   @default("WHATSAPP") // "WHATSAPP" | "INTERNAL"
-  conversationId    String   // phone number for WhatsApp, user ID/room for Internal
+  conversationId    String // phone number for WhatsApp, user ID/room for Internal
   senderId          String?
   senderName        String?
   recipientPhone    String?
@@ -775,7 +797,7 @@ model ChatMessage {
   recipientUserId   String?
   content           String   @db.Text
   direction         String   @default("OUTBOUND") // "OUTBOUND" | "INBOUND"
-  status            String   @default("SENT")     // "SENT" | "DELIVERED" | "READ" | "FAILED"
+  status            String   @default("SENT") // "SENT" | "DELIVERED" | "READ" | "FAILED"
   mediaUrl          String?  @db.Text
   providerMessageId String?
   createdAt         DateTime @default(now())
@@ -814,3 +836,288 @@ model DiscountAuthorization {
   @@index([draftSaleId])
   @@index([completedSaleId])
 }
+
+enum POSDeviceType {
+  IPAD_POS
+  IPHONE_TAP_TO_PAY
+  DESKTOP_POS
+  OTHER
+}
+
+enum PosPaymentMethod {
+  CASH
+  TRANSFER
+  CARD
+  STORE_CREDIT
+  OTHER
+}
+
+enum PaymentChannel {
+  STRIPE_READER
+  STRIPE_TAP_TO_PAY_IPHONE
+  MANUAL_REGISTER
+  OTHER
+}
+
+enum PosPaymentStatus {
+  CREATED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  UNKNOWN
+}
+
+enum PaymentAttemptStatus {
+  CREATED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELED
+  UNKNOWN
+}
+
+model POSDevice {
+  id             String        @id @default(uuid())
+  organizationId String
+  siteId         String?
+  deviceName     String
+  deviceType     POSDeviceType @default(IPAD_POS)
+  deviceUuid     String
+  appVersion     String?
+  status         String        @default("ACTIVE")
+  lastSeenAt     DateTime      @default(now())
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site          Site?          @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  stripeReaders  StripeReader[]
+  posPayments    PosPayment[]
+  sourceHandoffs PaymentHandoff[] @relation("HandoffSourceDevice")
+  targetHandoffs PaymentHandoff[] @relation("HandoffTargetDevice")
+
+  @@unique([organizationId, deviceUuid])
+  @@index([organizationId, status])
+  @@index([siteId])
+}
+
+model StripeReader {
+  id             String   @id @default(uuid())
+  organizationId String
+  siteId         String?
+  posDeviceId    String?
+  stripeReaderId String
+  label          String
+  serialNumber   String?
+  deviceType     String?
+  connectionType String   @default("BLUETOOTH")
+  ipAddress      String?
+  locationId     String?
+  status         String   @default("ONLINE")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site           Site?                 @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  posDevice      POSDevice?            @relation(fields: [posDeviceId], references: [id], onDelete: SetNull)
+  stripePayments StripePaymentRecord[]
+
+  @@unique([organizationId, stripeReaderId])
+  @@index([organizationId, status])
+  @@index([posDeviceId])
+  @@index([siteId])
+}
+
+model PosPayment {
+  id              String           @id @default(uuid())
+  organizationId  String
+  saleId          String?
+  posDeviceId     String?
+  paymentMethod   PosPaymentMethod
+  paymentChannel  PaymentChannel   @default(MANUAL_REGISTER)
+  amount          Decimal          @db.Decimal(12, 2)
+  currency        String           @default("MXN")
+  status          PosPaymentStatus @default(CREATED)
+  idempotencyKey  String
+  notes           String?
+  createdByUserId String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  organization  Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sale          Sale?                @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  posDevice     POSDevice?           @relation(fields: [posDeviceId], references: [id], onDelete: SetNull)
+  createdByUser User?                @relation("PosPaymentCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  attempts      PaymentAttempt[]
+  stripePayment StripePaymentRecord?
+  refunds       PosRefund[]
+  handoffs      PaymentHandoff[]
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, status, createdAt])
+  @@index([saleId])
+  @@index([posDeviceId])
+  @@index([createdByUserId])
+}
+
+model PaymentAttempt {
+  id                    String               @id @default(uuid())
+  paymentId             String
+  attemptNumber         Int                  @default(1)
+  channel               PaymentChannel
+  status                PaymentAttemptStatus @default(CREATED)
+  stripePaymentIntentId String?
+  idempotencyKey        String
+  failureCode           String?
+  failureMessage        String?
+  rawResponseJson       Json?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  payment        PosPayment            @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  stripePayments StripePaymentRecord[]
+  handoffs       PaymentHandoff[]
+
+  @@index([paymentId, attemptNumber])
+  @@index([stripePaymentIntentId])
+  @@index([status])
+}
+
+model StripePaymentRecord {
+  id                    String         @id @default(uuid())
+  organizationId        String
+  posPaymentId          String         @unique
+  paymentAttemptId      String?
+  stripeReaderId        String?
+  stripePaymentIntentId String         @unique
+  stripeChargeId        String?
+  stripeCustomerId      String?
+  stripeLocationId      String?
+  amount                Decimal        @db.Decimal(12, 2)
+  currency              String         @default("MXN")
+  status                String
+  channel               PaymentChannel
+  cardBrand             String?
+  cardLast4             String?
+  cardEntryMethod       String?
+  receiptUrl            String?
+  metadataJson          Json?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  posPayment     PosPayment      @relation(fields: [posPaymentId], references: [id], onDelete: Cascade)
+  paymentAttempt PaymentAttempt? @relation(fields: [paymentAttemptId], references: [id], onDelete: SetNull)
+  reader         StripeReader?   @relation(fields: [stripeReaderId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, stripePaymentIntentId])
+  @@index([stripeReaderId])
+  @@index([paymentAttemptId])
+}
+
+model StripeWebhookEvent {
+  id             String    @id @default(uuid())
+  organizationId String?
+  stripeEventId  String    @unique
+  eventType      String
+  processed      Boolean   @default(false)
+  processedAt    DateTime?
+  payloadJson    Json
+  error          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([stripeEventId])
+  @@index([eventType, processed])
+  @@index([organizationId, createdAt])
+}
+
+model PosRefund {
+  id                 String   @id @default(uuid())
+  organizationId     String
+  saleId             String?
+  paymentId          String
+  amount             Decimal  @db.Decimal(12, 2)
+  currency           String   @default("MXN")
+  reason             String
+  status             String   @default("COMPLETED")
+  stripeRefundId     String?
+  requestedByUserId  String?
+  authorizedByUserId String?
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sale             Sale?        @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  payment          PosPayment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  requestedByUser  User?        @relation("PosRefundRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  authorizedByUser User?        @relation("PosRefundAuthorizedBy", fields: [authorizedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([paymentId])
+  @@index([saleId])
+}
+
+enum PaymentHandoffStatus {
+  CREATED
+  WAITING_FOR_DEVICE
+  ASSIGNED
+  ACCEPTED
+  PAYMENT_PROCESSING
+  VERIFYING
+  SUCCEEDED
+  FAILED
+  CANCELED
+  EXPIRED
+  UNKNOWN
+}
+
+model PaymentHandoff {
+  id                String               @id @default(uuid())
+  organizationId    String
+  siteId            String?
+  saleId            String?
+  posPaymentId      String
+  paymentAttemptId  String?
+  sourceDeviceId    String?
+  targetDeviceId    String?
+  requestedByUserId String?
+  acceptedByUserId  String?
+  channel           PaymentChannel       @default(STRIPE_TAP_TO_PAY_IPHONE)
+  amount            Decimal              @db.Decimal(12, 2)
+  currency          String               @default("MXN")
+  status            PaymentHandoffStatus @default(CREATED)
+  expiresAt         DateTime
+  acceptedAt        DateTime?
+  completedAt       DateTime?
+  canceledAt        DateTime?
+  idempotencyKey    String?
+  version           Int                  @default(1)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site            Site?           @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  sale            Sale?           @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  posPayment      PosPayment      @relation(fields: [posPaymentId], references: [id], onDelete: Cascade)
+  paymentAttempt  PaymentAttempt? @relation(fields: [paymentAttemptId], references: [id], onDelete: SetNull)
+  sourceDevice    POSDevice?      @relation("HandoffSourceDevice", fields: [sourceDeviceId], references: [id], onDelete: SetNull)
+  targetDevice    POSDevice?      @relation("HandoffTargetDevice", fields: [targetDeviceId], references: [id], onDelete: SetNull)
+  requestedByUser User?           @relation("HandoffRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  acceptedByUser  User?           @relation("HandoffAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, status, createdAt])
+  @@index([siteId, status])
+  @@index([targetDeviceId, status])
+  @@index([sourceDeviceId, status])
+  @@index([posPaymentId])
+  @@index([saleId])
+}
+

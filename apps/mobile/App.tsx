@@ -11,6 +11,8 @@ import { PosLayoutProvider } from "./src/contexts/PosLayoutContext";
 
 import { CommissionProvider } from "./src/contexts/CommissionContext";
 
+import { TerminalProvider } from "./src/contexts/TerminalContext";
+
 function AppContent() {
   const { session, isRestoringSession } = useAuth();
 
@@ -27,13 +29,15 @@ function AppContent() {
   }
 
   return (
-    <CartProvider>
-      <CommissionProvider>
-        <PosLayoutProvider>
-          <MainAppShell />
-        </PosLayoutProvider>
-      </CommissionProvider>
-    </CartProvider>
+    <TerminalProvider>
+      <CartProvider>
+        <CommissionProvider>
+          <PosLayoutProvider>
+            <MainAppShell />
+          </PosLayoutProvider>
+        </CommissionProvider>
+      </CartProvider>
+    </TerminalProvider>
   );
 }
 

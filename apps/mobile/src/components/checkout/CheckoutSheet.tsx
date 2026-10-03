@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,12 +6,14 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
+  ActivityIndicator,
 } from "react-native";
 import { useAuth } from "../../contexts/AuthContext";
 import { useCart } from "../../contexts/CartContext";
 import { useCommission } from "../../contexts/CommissionContext";
+import { useTerminal } from "../../contexts/TerminalContext";
 import { CheckoutApplicationService, normalizeWhatsappPhone } from "@ireader/application";
-import type { BackendSaleCreatedResponse } from "@ireader/contracts";
+import type { BackendSaleCreatedResponse, StripeTerminalOperationalState } from "@ireader/contracts";
 import { IPAD_THEME } from "../../theme/tokens";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
@@ -25,12 +27,13 @@ interface CheckoutSheetProps {
   onBackToPos?: () => void;
 }
 
-const PAYMENT_METHODS = [
+const ALL_PAYMENT_METHODS = [
   { id: "Cash", label: "Cash", icon: "💵", description: "Direct cash payment in store" },
-  { id: "Card", label: "Card / POS", icon: "💳", description: "External POS / Terminal payment" },
+  { id: "Card", label: "Card / Stripe", icon: "💳", description: "Stripe Terminal Card Reader" },
   { id: "Transfer", label: "SPEI / Bank", icon: "🏦", description: "Electronic bank transfer" },
   { id: "Credit", label: "Store Credit", icon: "📝", description: "Charge to customer credit balance" },
   { id: "Other", label: "Other", icon: "🏷️", description: "Trade-in or custom split" },
+  { id: "Card_Handoff", label: "Cobrar con iPhone", icon: "📱", description: "Tap to Pay en iPhone autorizado" },
 ] as const;
 
 function generateUUID(): string {
@@ -63,28 +66,223 @@ export function CheckoutSheet({
     clearCart,
   } = useCart();
   const { activeSeller, calculateEstimate, recordSale } = useCommission();
+  const {
+    capabilities,
+    isStripeEnabled,
+    isTapToPayEnabled,
+    isIPhone,
+    isTapToPayEligible,
+    operationalState,
+    tapToPayState,
+    connectedReader,
+    discoveredReaders,
+    isDiscovering,
+    discoverReaders,
+    connectReader,
+    collectAndProcessCardPayment,
+    collectAndProcessTapToPayPayment,
+    posDeviceId,
+    availableTargetDevices,
+    fetchAvailableTargetDevices,
+    createPaymentHandoff,
+    cancelActiveHandoff,
+    pollHandoff,
+  } = useTerminal();
 
-  const commissionSummary = React.useMemo(() => {
+  const commissionSummary = useMemo(() => {
     return calculateEstimate(items);
   }, [calculateEstimate, items]);
 
   // Logical checkout operation idempotency key (generated once per checkout session, reused on retries)
-  const checkoutIdRef = React.useRef<string>(generateUUID());
+  const checkoutIdRef = useRef<string>(generateUUID());
 
-  const [paymentMethod, setPaymentMethod] = useState<string>("Cash");
+  // Filter payment methods strictly based on multi-tenant capabilities and device capability
+  const availablePaymentMethods = useMemo(() => {
+    const list = ALL_PAYMENT_METHODS.filter((m) => {
+      if (m.id === "Cash") return capabilities.cashEnabled !== false;
+      if (m.id === "Transfer") return capabilities.transferEnabled !== false;
+      if (m.id === "Card") {
+        return Boolean(
+          capabilities.cardEnabled ||
+          capabilities.stripeReaderEnabled ||
+          (isIPhone && capabilities.stripeTapToPayEnabled)
+        );
+      }
+      if (m.id === "Credit") return capabilities.creditEnabled !== false;
+      if (m.id === "Other") return capabilities.otherEnabled !== false;
+      return true;
+    }).map((m) => {
+      if (m.id === "Card" && isIPhone && isTapToPayEnabled) {
+        return {
+          ...m,
+          label: "Card / Tap to Pay",
+          description: "Tap card or digital wallet on iPhone",
+        };
+      }
+      return m;
+    });
+
+    // On iPad, offer cross-device Tap to Pay handoff if enabled for site/tenant
+    if (!isIPhone && capabilities.stripeTapToPayEnabled) {
+      list.push({
+        id: "Card_Handoff" as any,
+        label: "Cobrar con iPhone",
+        icon: "📱",
+        description: "Tap to Pay en iPhone autorizado",
+      });
+    }
+
+    return list;
+  }, [capabilities, isIPhone, isTapToPayEnabled]);
+
+  const [paymentMethod, setPaymentMethod] = useState<string>(() => {
+    return capabilities.defaultMethod && availablePaymentMethods.some((m) => m.id === capabilities.defaultMethod)
+      ? capabilities.defaultMethod
+      : availablePaymentMethods[0]?.id || "Cash";
+  });
+
+  const [selectedTargetDeviceId, setSelectedTargetDeviceId] = useState<string | null>(null);
+  const [activeHandoffId, setActiveHandoffId] = useState<string | null>(null);
+  const [handoffStatusMessage, setHandoffStatusMessage] = useState<string | null>(null);
+
   const [customerName, setCustomerName] = useState(selectedCustomer?.name || "");
   const [customerPhone, setCustomerPhone] = useState(selectedCustomer?.phone || "");
   const [customerEmail, setCustomerEmail] = useState(selectedCustomer?.email || "");
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [terminalStep, setTerminalStep] = useState<StripeTerminalOperationalState | null>(null);
+  const [isUnknownState, setIsUnknownState] = useState(false);
+  const [lastPaymentIntentId, setLastPaymentIntentId] = useState<string | null>(null);
 
-  const checkoutService = React.useMemo(
+  // Fetch available target iPhones when selecting Card_Handoff on iPad
+  useEffect(() => {
+    if (paymentMethod === "Card_Handoff" && !isIPhone) {
+      void fetchAvailableTargetDevices(capabilities.stripeLocationId || undefined).then((devs) => {
+        if (devs.length > 0 && !selectedTargetDeviceId) {
+          const firstAvailable = devs.find((d) => d.isAvailable) || devs[0];
+          setSelectedTargetDeviceId(firstAvailable.id);
+        }
+      });
+    }
+  }, [paymentMethod, isIPhone, fetchAvailableTargetDevices, capabilities.stripeLocationId, selectedTargetDeviceId]);
+
+  const checkoutService = useMemo(
     () => new CheckoutApplicationService(apiClient),
     [apiClient]
   );
 
-  const printerService = React.useMemo(() => new MobilePrinterService(), []);
+  const printerService = useMemo(() => new MobilePrinterService(), []);
+
+  // Reader Discovery Handler for Card / Stripe
+  const handleScanReaders = async () => {
+    setErrorMessage(null);
+    try {
+      const readers = await discoverReaders();
+      if (readers.length === 1 && !connectedReader) {
+        await connectReader(readers[0]);
+      }
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : "Error scanning for card readers.");
+    }
+  };
+
+  // Re-verify payment when in UNKNOWN state
+  const handleReverifyUnknownPayment = async () => {
+    if (!lastPaymentIntentId) return;
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      const verifyRes = await checkoutService.verifyStripePayment({
+        paymentIntentId: lastPaymentIntentId,
+        posDeviceId,
+      });
+
+      if (verifyRes.ok && (verifyRes.status === "SUCCEEDED" || verifyRes.posPaymentStatus === "PAID")) {
+        setIsUnknownState(false);
+        setTerminalStep("PAYMENT_SUCCEEDED");
+
+        // Complete sale in backend
+        const saleRes = await finalizeBackendSale("Card", lastPaymentIntentId);
+        if (saleRes) {
+          triggerSuccess(saleRes);
+        }
+      } else if (verifyRes.status === "FAILED") {
+        setIsUnknownState(false);
+        setTerminalStep("PAYMENT_FAILED");
+        setErrorMessage("El pago anterior fue declinado o cancelado por Stripe. Puede intentar con otro método.");
+      } else {
+        setErrorMessage("El estado del pago continúa pendiente en Stripe. Por favor intente verificar de nuevo en unos segundos.");
+      }
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : "Error al verificar estado del pago.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const finalizeBackendSale = async (
+    method: string,
+    stripeReference?: string
+  ): Promise<BackendSaleCreatedResponse | null> => {
+    const phoneNorm = normalizeWhatsappPhone(customerPhone);
+    const salePayload = {
+      saleId: activeDiscountAuth?.draftSaleId || checkoutIdRef.current,
+      customerName: customerName.trim(),
+      customerEmail: customerEmail.trim().toLowerCase() || undefined,
+      customerWhatsapp: phoneNorm.normalized || "+520000000000",
+      sendReceiptEmail: Boolean(customerEmail.trim()),
+      paymentMethod: method,
+      paymentBreakdown: { [method]: totalPreview },
+      notes: notes.trim()
+        ? stripeReference
+          ? `${notes.trim()} | Stripe: ${stripeReference}`
+          : notes.trim()
+        : stripeReference
+        ? `Stripe PI: ${stripeReference}`
+        : undefined,
+      soldBy: activeSeller.name || session?.email || "iPad POS",
+      authorizationId: activeDiscountAuth?.id,
+      discount: activeDiscountAuth?.approvedDiscount ?? (discountAmount > 0 ? discountAmount : undefined),
+      items: items.map((i) => ({
+        inventoryItemId: i.inventoryItem.id,
+        imei: i.inventoryItem.imei || i.inventoryItem.serialNumber || i.inventoryItem.id,
+        salePrice: i.salePrice,
+      })),
+    };
+
+    const res = await checkoutService.processBackendSale(salePayload);
+    if (!res.ok || !res.data) {
+      setErrorMessage(res.error || "Failed to process sale on server.");
+      return null;
+    }
+
+    // Commission registration
+    void recordSale(res.data.saleId || checkoutIdRef.current, res.data.saleNumber, items);
+
+    // Thermal receipt printing
+    void printerService.printReceipt({
+      saleId: res.data.saleId || res.data.saleNumber || checkoutIdRef.current || "POS-SALE",
+      customerName: res.data.customer?.name || customerName.trim(),
+      items: res.data.items?.length
+        ? res.data.items.map((i) => ({
+            model: i.model || "Device",
+            imei: i.imei,
+            salePrice: i.salePrice,
+          }))
+        : items.map((i) => ({
+            model: i.inventoryItem.model,
+            imei: i.inventoryItem.imei || undefined,
+            salePrice: i.salePrice,
+          })),
+      totalAmount: typeof res.data.total === "number" ? res.data.total : totalPreview,
+      paymentMethod: res.data.paymentMethod || method,
+      createdAt: res.data.createdAt || new Date().toISOString(),
+    });
+
+    clearCart();
+    return res.data;
+  };
 
   const handleCompleteSale = async () => {
     // 1. Guard against double-tap / concurrent submission
@@ -123,57 +321,219 @@ export function CheckoutSheet({
     setIsSubmitting(true);
     setErrorMessage(null);
 
-    const salePayload = {
-      saleId: activeDiscountAuth?.draftSaleId || checkoutIdRef.current,
-      customerName: customerName.trim(),
-      customerEmail: customerEmail.trim().toLowerCase() || undefined,
-      customerWhatsapp: phoneNorm.normalized,
-      sendReceiptEmail: Boolean(customerEmail.trim()),
-      paymentMethod,
-      paymentBreakdown: { [paymentMethod]: totalPreview },
-      notes: notes.trim() || undefined,
-      soldBy: activeSeller.name || session?.email || "iPad POS",
-      authorizationId: activeDiscountAuth?.id,
-      discount: activeDiscountAuth?.approvedDiscount ?? (discountAmount > 0 ? discountAmount : undefined),
-      items: items.map((i) => ({
-        inventoryItemId: i.inventoryItem.id,
-        imei: i.inventoryItem.imei || i.inventoryItem.serialNumber || i.inventoryItem.id,
-        salePrice: i.salePrice,
-      })),
-    };
+    // ─── STRIPE TAP TO PAY ON IPHONE FLOW ──────────────────────────────────
+    if (paymentMethod === "Card" && isIPhone && isTapToPayEnabled) {
+      try {
+        setTerminalStep("CONNECTING");
 
-    try {
-      const res = await checkoutService.processBackendSale(salePayload);
-      if (!res.ok || !res.data) {
-        setErrorMessage(res.error || "Failed to process sale on server.");
+        // 1. Backend creates PaymentIntent & PosPayment with STRIPE_TAP_TO_PAY_IPHONE channel
+        const intentRes = await checkoutService.initiateStripeCardPayment({
+          saleId: checkoutIdRef.current,
+          amount: totalPreview,
+          currency: capabilities.currency || "mxn",
+          posDeviceId,
+          customerName: customerName.trim(),
+          customerEmail: customerEmail.trim().toLowerCase() || undefined,
+          customerPhone: phoneNorm.normalized,
+        });
+
+        if (!intentRes.ok || !intentRes.paymentIntentId) {
+          throw new Error(intentRes.error || "No se pudo iniciar el cobro con Tap to Pay en el servidor.");
+        }
+
+        setLastPaymentIntentId(intentRes.paymentIntentId);
+
+        // 2. Terminal SDK executes contactless Tap to Pay collection & processPayment & backend verification
+        const terminalResult = await collectAndProcessTapToPayPayment(intentRes, (step) => {
+          setTerminalStep(step as any);
+        });
+
+        if (terminalResult.isUnknown || terminalResult.status === "UNKNOWN") {
+          setIsUnknownState(true);
+          setTerminalStep("PAYMENT_UNKNOWN");
+          setErrorMessage(
+            "⚠️ Transacción Tap to Pay en estado ambiguo. El backend está verificando con Stripe. NO intente cobrar de nuevo hasta verificar."
+          );
+          return;
+        }
+
+        if (!terminalResult.ok || terminalResult.status !== "SUCCEEDED") {
+          setTerminalStep("PAYMENT_FAILED");
+          throw new Error(terminalResult.error || "Transacción Tap to Pay declinada o cancelada.");
+        }
+
+        // 3. Finalize sale record in backend
+        setTerminalStep("PAYMENT_SUCCEEDED");
+        const saleRes = await finalizeBackendSale("Card", intentRes.paymentIntentId);
+        if (saleRes) {
+          triggerSuccess(saleRes);
+        }
+      } catch (err: unknown) {
+        setErrorMessage(
+          err instanceof Error
+            ? err.message
+            : "Error durante el cobro con Tap to Pay en iPhone."
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    // ─── CROSS-DEVICE TAP TO PAY HANDOFF FLOW (iPad -> iPhone) ───────────────
+    if (paymentMethod === "Card_Handoff") {
+      if (!selectedTargetDeviceId) {
+        setIsSubmitting(false);
+        setErrorMessage("Por favor seleccione un iPhone autorizado para enviar el cobro.");
         return;
       }
 
-      // Registrar la comisión de esta venta en el historial local del vendedor
-      void recordSale(res.data.saleId || checkoutIdRef.current, res.data.saleNumber, items);
+      try {
+        setHandoffStatusMessage("Enviando cobro al iPhone...");
+        setTerminalStep("CONNECTING");
 
-      // Print thermal receipt stub asynchronously (separate failure boundary)
-      void printerService.printReceipt({
-        saleId: res.data.saleId || res.data.saleNumber || checkoutIdRef.current || "POS-SALE",
-        customerName: res.data.customer?.name || customerName.trim(),
-        items: res.data.items?.length
-          ? res.data.items.map((i) => ({
-              model: i.model || "Device",
-              imei: i.imei,
-              salePrice: i.salePrice,
-            }))
-          : items.map((i) => ({
-              model: i.inventoryItem.model,
-              imei: i.inventoryItem.imei || undefined,
-              salePrice: i.salePrice,
-            })),
-        totalAmount: typeof res.data.total === "number" ? res.data.total : totalPreview,
-        paymentMethod: res.data.paymentMethod || paymentMethod,
-        createdAt: res.data.createdAt || new Date().toISOString(),
-      });
+        // 1. Backend creates PaymentHandoff and PaymentIntent
+        const handoffRes = await createPaymentHandoff({
+          targetDeviceId: selectedTargetDeviceId,
+          amount: totalPreview,
+          saleId: checkoutIdRef.current,
+          siteId: capabilities.stripeLocationId || undefined,
+          notes: `Venta iPad ${checkoutIdRef.current}`,
+        });
 
-      clearCart();
-      triggerSuccess(res.data);
+        if (!handoffRes.ok || !handoffRes.handoffId) {
+          throw new Error(handoffRes.error || "No se pudo crear la solicitud de cobro en el servidor.");
+        }
+
+        setActiveHandoffId(handoffRes.handoffId);
+        setLastPaymentIntentId(handoffRes.handoff.stripePaymentIntentId || null);
+        setHandoffStatusMessage("Esperando que el iPhone acepte el cobro...");
+
+        // 2. Poll handoff state until terminal
+        await new Promise<void>((resolve, reject) => {
+          const stopPolling = pollHandoff(handoffRes.handoffId, async (updated) => {
+            if (updated.status === "ASSIGNED") {
+              setHandoffStatusMessage("Esperando que el iPhone acepte el cobro...");
+              setTerminalStep("CONNECTING");
+            } else if (updated.status === "ACCEPTED") {
+              setHandoffStatusMessage("iPhone aceptó. Cliente acercando tarjeta...");
+              setTerminalStep("WAITING_FOR_CARD");
+            } else if (updated.status === "PAYMENT_PROCESSING") {
+              setHandoffStatusMessage("Procesando pago en el iPhone...");
+              setTerminalStep("PROCESSING");
+            } else if (updated.status === "VERIFYING") {
+              setHandoffStatusMessage("Verificando transacción con el banco...");
+              setTerminalStep("VERIFYING");
+            } else if (updated.status === "SUCCEEDED") {
+              stopPolling();
+              setHandoffStatusMessage("¡Pago Aprobado!");
+              setTerminalStep("PAYMENT_SUCCEEDED");
+              try {
+                const saleRes = await finalizeBackendSale("Card", updated.stripePaymentIntentId || undefined);
+                if (saleRes) {
+                  triggerSuccess(saleRes);
+                }
+                resolve();
+              } catch (e) {
+                reject(e);
+              }
+            } else if (updated.status === "UNKNOWN") {
+              stopPolling();
+              setIsUnknownState(true);
+              setTerminalStep("PAYMENT_UNKNOWN");
+              setHandoffStatusMessage("⚠️ Estado ambiguo. Verificando con Stripe...");
+              resolve();
+            } else if (updated.status === "CANCELED" || updated.status === "EXPIRED" || updated.status === "FAILED") {
+              stopPolling();
+              setTerminalStep("PAYMENT_FAILED");
+              reject(new Error(`El cobro en iPhone fue ${updated.status.toLowerCase()}.`));
+            }
+          });
+        });
+      } catch (err: unknown) {
+        setErrorMessage(
+          err instanceof Error
+            ? err.message
+            : "Error durante el cobro cruzado con iPhone."
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    // ─── STRIPE PHYSICAL READER FLOW (iPad) ─────────────────────────────────
+    if (paymentMethod === "Card" && isStripeEnabled && !isIPhone) {
+      if (!connectedReader) {
+        setIsSubmitting(false);
+        setErrorMessage("Por favor conecte un lector Stripe antes de procesar el pago con tarjeta.");
+        return;
+      }
+
+      try {
+        setTerminalStep("CONNECTING");
+
+        // 1. Backend creates PaymentIntent & PosPayment
+        const intentRes = await checkoutService.initiateStripeCardPayment({
+          saleId: checkoutIdRef.current,
+          amount: totalPreview,
+          currency: capabilities.currency || "mxn",
+          posDeviceId,
+          stripeReaderId: connectedReader.id,
+          customerName: customerName.trim(),
+          customerEmail: customerEmail.trim().toLowerCase() || undefined,
+          customerPhone: phoneNorm.normalized,
+        });
+
+        if (!intentRes.ok || !intentRes.paymentIntentId) {
+          throw new Error(intentRes.error || "No se pudo iniciar el cobro con Stripe en el servidor.");
+        }
+
+        setLastPaymentIntentId(intentRes.paymentIntentId);
+
+        // 2. Terminal SDK executes collectPaymentMethod & processPayment & authoritative verification
+        const terminalResult = await collectAndProcessCardPayment(intentRes, (step) => {
+          setTerminalStep(step);
+        });
+
+        if (terminalResult.isUnknown || terminalResult.status === "UNKNOWN") {
+          setIsUnknownState(true);
+          setTerminalStep("PAYMENT_UNKNOWN");
+          setErrorMessage(
+            "⚠️ Transacción en estado ambiguo. El backend está verificando con Stripe. NO intente cobrar de nuevo hasta verificar."
+          );
+          return;
+        }
+
+        if (!terminalResult.ok || terminalResult.status !== "SUCCEEDED") {
+          setTerminalStep("PAYMENT_FAILED");
+          throw new Error(terminalResult.error || "Transacción declinada o fallida.");
+        }
+
+        // 3. Finalize sale record in backend
+        setTerminalStep("PAYMENT_SUCCEEDED");
+        const saleRes = await finalizeBackendSale("Card", intentRes.paymentIntentId);
+        if (saleRes) {
+          triggerSuccess(saleRes);
+        }
+      } catch (err: unknown) {
+        setErrorMessage(
+          err instanceof Error
+            ? err.message
+            : "Error durante el cobro con lector Stripe."
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    // ─── STANDARD NON-STRIPE FLOW (Cash, Transfer, Credit, Other) ───────────
+    try {
+      const saleRes = await finalizeBackendSale(paymentMethod);
+      if (saleRes) {
+        triggerSuccess(saleRes);
+      }
     } catch (err: unknown) {
       setErrorMessage(
         err instanceof Error
@@ -205,7 +565,43 @@ export function CheckoutSheet({
         </TouchableOpacity>
       </View>
 
-      {errorMessage && (
+      {/* Terminal Operational State Banner */}
+      {terminalStep && isSubmitting && (
+        <View style={styles.terminalStateBanner}>
+          <ActivityIndicator color={IPAD_THEME.colors.accent} size="small" />
+          <Text style={styles.terminalStateText}>
+            {terminalStep === "PREPARING_TAP_TO_PAY" && "📲 Preparando Tap to Pay en iPhone..."}
+            {terminalStep === "WAITING_FOR_CUSTOMER" && "💳 Acerque la tarjeta o billetera digital al iPhone..."}
+            {terminalStep === "PROCESSING_PAYMENT" && "⏳ Procesando pago sin contacto con Stripe..."}
+            {terminalStep === "VERIFYING_PAYMENT" && "🛡️ Verificando autorización en el servidor..."}
+            {terminalStep === "WAITING_FOR_CARD" && "💳 Acerque, inserte o deslice la tarjeta en el lector..."}
+            {terminalStep === "PROCESSING" && "⏳ Procesando transacción con Stripe..."}
+            {terminalStep === "VERIFYING" && "🛡️ Verificando autorización en el servidor..."}
+            {terminalStep === "CONNECTING" && "🔌 Conectando con Stripe..."}
+          </Text>
+        </View>
+      )}
+
+      {/* Unknown Payment State Banner */}
+      {isUnknownState && (
+        <View style={styles.unknownAlert}>
+          <Text style={styles.unknownTitle}>⚠️ PAGO EN VERIFICACIÓN (UNKNOWN STATE)</Text>
+          <Text style={styles.unknownDesc}>
+            La comunicación con el lector o Stripe se interrumpió durante el cobro. No reintente cobrar para evitar doble cargo al cliente.
+          </Text>
+          <TouchableOpacity
+            style={styles.reverifyBtn}
+            onPress={handleReverifyUnknownPayment}
+            disabled={isSubmitting}
+          >
+            <Text style={styles.reverifyBtnText}>
+              {isSubmitting ? "Verificando con Servidor..." : "🔍 Re-verificar Estado de Pago con Stripe"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {errorMessage && !isUnknownState && (
         <View style={styles.errorAlert} accessibilityRole="alert">
           <Text style={styles.errorText}>⚠️ {errorMessage}</Text>
         </View>
@@ -353,11 +749,11 @@ export function CheckoutSheet({
             </View>
           </View>
 
-          {/* Payment Method */}
+          {/* Payment Method Selection */}
           <View style={styles.card}>
             <Text style={styles.cardHeader}>Select Payment Method</Text>
             <View style={styles.paymentGrid}>
-              {PAYMENT_METHODS.map((m) => {
+              {availablePaymentMethods.map((m) => {
                 const isSelected = paymentMethod === m.id;
                 return (
                   <TouchableOpacity
@@ -380,6 +776,123 @@ export function CheckoutSheet({
                 );
               })}
             </View>
+
+            {/* Tap to Pay on iPhone Box (when Card + Tap to Pay on iPhone) */}
+            {paymentMethod === "Card" && isIPhone && isTapToPayEnabled && (
+              <View style={styles.tapToPayBox}>
+                <Text style={styles.tapToPayBoxTitle}>📲 Tap to Pay on iPhone</Text>
+                <Text style={styles.tapToPayBoxDesc}>
+                  Acepta tarjetas sin contacto (Visa, Mastercard, AMEX) y billeteras digitales (Apple Pay, Google Pay) directamente en este iPhone.
+                </Text>
+              </View>
+            )}
+
+            {/* Stripe Reader Integration Status (Only shown on iPad when Card + Stripe Reader is active) */}
+            {paymentMethod === "Card" && isStripeEnabled && !isIPhone && (
+              <View style={styles.readerContainer}>
+                <View style={styles.readerHeaderRow}>
+                  <Text style={styles.readerHeaderTitle}>Lector Stripe Terminal</Text>
+                  <TouchableOpacity
+                    onPress={handleScanReaders}
+                    disabled={isDiscovering}
+                    style={styles.scanBtn}
+                  >
+                    <Text style={styles.scanBtnText}>
+                      {isDiscovering ? "Buscando..." : "🔍 Buscar Lectores"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {connectedReader ? (
+                  <View style={styles.readerConnectedBox}>
+                    <Text style={styles.readerConnectedText}>
+                      🟢 Conectado: <Text style={{ fontWeight: "900" }}>{connectedReader.label || connectedReader.deviceType}</Text>
+                    </Text>
+                    <Text style={styles.readerSubText}>
+                      S/N: {connectedReader.serialNumber} • Batería: {Math.round((connectedReader.batteryLevel ?? 0.95) * 100)}%
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.readerDisconnectedBox}>
+                    <Text style={styles.readerDisconnectedText}>
+                      ⚠️ Ningún lector conectado. Toque &quot;Buscar Lectores&quot; para emparejar.
+                    </Text>
+                  </View>
+                )}
+
+                {discoveredReaders.length > 0 && !connectedReader && (
+                  <View style={styles.discoveredList}>
+                    <Text style={styles.discoveredListTitle}>Lectores encontrados:</Text>
+                    {discoveredReaders.map((r) => (
+                      <TouchableOpacity
+                        key={r.id}
+                        style={styles.discoveredItem}
+                        onPress={() => connectReader(r)}
+                      >
+                        <Text style={styles.discoveredItemText}>
+                          📲 {r.label || r.deviceType} ({r.serialNumber})
+                        </Text>
+                        <Text style={styles.connectActionText}>Conectar</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Cross-Device Tap to Pay on iPhone Selection (Only shown on iPad when Card_Handoff is active) */}
+            {paymentMethod === "Card_Handoff" && !isIPhone && (
+              <View style={styles.readerContainer}>
+                <View style={styles.readerHeaderRow}>
+                  <Text style={styles.readerHeaderTitle}>Seleccione iPhone para Cobro</Text>
+                  <TouchableOpacity
+                    onPress={() => fetchAvailableTargetDevices(capabilities.stripeLocationId || undefined)}
+                    style={styles.scanBtn}
+                  >
+                    <Text style={styles.scanBtnText}>🔄 Actualizar</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {availableTargetDevices.length === 0 ? (
+                  <View style={styles.readerDisconnectedBox}>
+                    <Text style={styles.readerDisconnectedText}>
+                      ⚠️ No hay iPhones de cobro registrados o disponibles en esta sucursal.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.discoveredList}>
+                    {availableTargetDevices.map((dev) => {
+                      const isTargetSelected = selectedTargetDeviceId === dev.id;
+                      return (
+                        <TouchableOpacity
+                          key={dev.id}
+                          style={[
+                            styles.discoveredItem,
+                            isTargetSelected && { borderColor: "#3b82f6", backgroundColor: "rgba(59, 130, 246, 0.15)" },
+                          ]}
+                          onPress={() => setSelectedTargetDeviceId(dev.id)}
+                        >
+                          <Text style={styles.discoveredItemText}>
+                            📱 {dev.deviceName} {dev.isAvailable ? "🟢 Disponible" : "🟡 Ocupado"}
+                          </Text>
+                          <Text style={[styles.connectActionText, isTargetSelected && { color: "#3b82f6", fontWeight: "bold" }]}>
+                            {isTargetSelected ? "✓ Seleccionado" : "Seleccionar"}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {handoffStatusMessage && (
+                  <View style={{ marginTop: 12, padding: 12, backgroundColor: "#0f172a", borderRadius: 8 }}>
+                    <Text style={{ color: "#38bdf8", fontWeight: "700", textAlign: "center" }}>
+                      {handoffStatusMessage}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Internal Notes / POS Reference</Text>
@@ -446,6 +959,54 @@ const styles = StyleSheet.create({
     color: IPAD_THEME.colors.textSecondary,
     fontSize: 14,
     fontWeight: "700",
+  },
+  terminalStateBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "rgba(56, 189, 248, 0.15)",
+    borderColor: "#38bdf8",
+    borderWidth: 1,
+    borderRadius: IPAD_THEME.radius.md,
+    padding: IPAD_THEME.spacing.md,
+    marginBottom: IPAD_THEME.spacing.lg,
+  },
+  terminalStateText: {
+    color: "#38bdf8",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  unknownAlert: {
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    borderColor: "#f59e0b",
+    borderWidth: 1.5,
+    borderRadius: IPAD_THEME.radius.md,
+    padding: IPAD_THEME.spacing.lg,
+    marginBottom: IPAD_THEME.spacing.lg,
+  },
+  unknownTitle: {
+    color: "#fbbf24",
+    fontSize: 15,
+    fontWeight: "900",
+    marginBottom: 4,
+  },
+  unknownDesc: {
+    color: "#fef3c7",
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  reverifyBtn: {
+    backgroundColor: "#d97706",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  reverifyBtnText: {
+    color: "#ffffff",
+    fontWeight: "900",
+    fontSize: 13,
   },
   errorAlert: {
     backgroundColor: IPAD_THEME.colors.dangerMuted,
@@ -612,6 +1173,95 @@ const styles = StyleSheet.create({
   paymentTextSelected: {
     color: "#080c14",
   },
+  readerContainer: {
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: IPAD_THEME.colors.borderSubtle,
+    padding: 12,
+    marginBottom: IPAD_THEME.spacing.md,
+  },
+  readerHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  readerHeaderTitle: {
+    color: IPAD_THEME.colors.textPrimary,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  scanBtn: {
+    backgroundColor: IPAD_THEME.colors.surfaceSecondary,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  scanBtnText: {
+    color: IPAD_THEME.colors.accent,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  readerConnectedBox: {
+    backgroundColor: "rgba(34, 197, 94, 0.12)",
+    borderColor: "rgba(34, 197, 94, 0.3)",
+    borderWidth: 1,
+    borderRadius: 6,
+    padding: 8,
+  },
+  readerConnectedText: {
+    color: "#4ade80",
+    fontSize: 12,
+  },
+  readerSubText: {
+    color: "#94a3b8",
+    fontSize: 11,
+    marginTop: 2,
+  },
+  readerDisconnectedBox: {
+    backgroundColor: "rgba(245, 158, 11, 0.1)",
+    borderColor: "rgba(245, 158, 11, 0.25)",
+    borderWidth: 1,
+    borderRadius: 6,
+    padding: 8,
+  },
+  readerDisconnectedText: {
+    color: "#fcd34d",
+    fontSize: 12,
+  },
+  discoveredList: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: IPAD_THEME.colors.borderSubtle,
+  },
+  discoveredListTitle: {
+    color: IPAD_THEME.colors.textSecondary,
+    fontSize: 11,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  discoveredItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    backgroundColor: IPAD_THEME.colors.surfaceSecondary,
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+  discoveredItemText: {
+    color: IPAD_THEME.colors.textPrimary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  connectActionText: {
+    color: IPAD_THEME.colors.accent,
+    fontSize: 11,
+    fontWeight: "800",
+  },
   completeBtn: {
     marginTop: IPAD_THEME.spacing.sm,
   },
@@ -638,5 +1288,24 @@ const styles = StyleSheet.create({
     color: "#38bdf8",
     fontSize: 11,
     fontWeight: "800",
+  },
+  tapToPayBox: {
+    backgroundColor: "rgba(56, 189, 248, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.3)",
+    borderRadius: IPAD_THEME.radius.md,
+    padding: IPAD_THEME.spacing.md,
+    marginBottom: IPAD_THEME.spacing.md,
+  },
+  tapToPayBoxTitle: {
+    color: "#38bdf8",
+    fontSize: 14,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+  tapToPayBoxDesc: {
+    color: IPAD_THEME.colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
   },
 });

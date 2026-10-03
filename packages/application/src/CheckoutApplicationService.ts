@@ -4,6 +4,11 @@ import type {
   CompleteSaleResponsePayload,
   BackendSaleCreatePayload,
   BackendSaleCreatedResponse,
+  IPaymentCapabilities,
+  ICreatePaymentIntentPayload,
+  ICreatePaymentIntentResponse,
+  IVerifyPaymentStatusPayload,
+  IVerifyPaymentStatusResponse,
 } from "@ireader/contracts";
 
 export class CheckoutApplicationService {
@@ -55,4 +60,36 @@ export class CheckoutApplicationService {
     }
     return this.apiClient.createSale(payload);
   }
+
+  // ─── Payment Capabilities & Stripe Reader Orchestration ───────────────────
+  async getPaymentCapabilities(siteId?: string): Promise<IPaymentCapabilities | null> {
+    const res = await this.apiClient.getPaymentCapabilities(siteId);
+    if (!res.ok || !res.data) {
+      // Fallback default safe capabilities (Cash & Transfer enabled, Stripe disabled)
+      return {
+        cashEnabled: true,
+        transferEnabled: true,
+        cardEnabled: false,
+        stripeReaderEnabled: false,
+        stripeTapToPayEnabled: false,
+        creditEnabled: true,
+        otherEnabled: true,
+        defaultMethod: "Cash",
+      };
+    }
+    return res.data;
+  }
+
+  async initiateStripeCardPayment(payload: ICreatePaymentIntentPayload): Promise<ICreatePaymentIntentResponse> {
+    return this.apiClient.createStripePaymentIntent(payload);
+  }
+
+  async verifyStripePayment(payload: IVerifyPaymentStatusPayload): Promise<IVerifyPaymentStatusResponse> {
+    return this.apiClient.verifyStripePaymentStatus(payload);
+  }
+
+  async cancelStripePayment(paymentIntentId: string, reason?: string): Promise<{ ok: boolean; error?: string }> {
+    return this.apiClient.cancelStripePaymentIntent({ paymentIntentId, reason });
+  }
 }
+

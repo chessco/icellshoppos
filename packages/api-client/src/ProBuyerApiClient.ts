@@ -15,6 +15,20 @@ import type {
   IAuthToken,
   SmartScanSearchRequest,
   SmartScanSearchResponse,
+  IPaymentCapabilities,
+  IStripeReaderInfo,
+  IPOSDeviceInfo,
+  IConnectionTokenResponse,
+  ICreatePaymentIntentPayload,
+  ICreatePaymentIntentResponse,
+  IVerifyPaymentStatusPayload,
+  IVerifyPaymentStatusResponse,
+  IPaymentHandoffInfo,
+  ICreateHandoffPayload,
+  ICreateHandoffResponse,
+  IAcceptHandoffPayload,
+  IAcceptHandoffResponse,
+  IAvailableTargetDevice,
 } from "@ireader/contracts";
 
 export interface IApiClientConfig {
@@ -286,4 +300,191 @@ export class ProBuyerApiClient {
     });
     return { ok: res.ok, data: res.data, error: res.error };
   }
+
+  // ─── Payment Capabilities & Multi-Tenant Configuration ──────────────────────
+  async getPaymentCapabilities(siteId?: string): Promise<{ ok: boolean; data?: IPaymentCapabilities; error?: string }> {
+    const qs = siteId ? `?siteId=${encodeURIComponent(siteId)}` : "";
+    const res = await this.request<{ capabilities: IPaymentCapabilities }>(`/api/org/payment-capabilities${qs}`, {
+      method: "GET",
+    });
+    return { ok: res.ok, data: res.data?.capabilities, error: res.error };
+  }
+
+  async updatePaymentCapabilities(capabilities: Partial<IPaymentCapabilities>, siteId?: string): Promise<{ ok: boolean; data?: IPaymentCapabilities; error?: string }> {
+    const res = await this.request<{ capabilities: IPaymentCapabilities }>("/api/org/payment-capabilities", {
+      method: "PUT",
+      body: JSON.stringify({ siteId, capabilities }),
+    });
+    return { ok: res.ok, data: res.data?.capabilities, error: res.error };
+  }
+
+  // ─── POS Device Identity & Hardware Registration ───────────────────────────
+  async getPosDevices(): Promise<{ ok: boolean; data?: IPOSDeviceInfo[]; error?: string }> {
+    const res = await this.request<{ devices: IPOSDeviceInfo[] }>("/api/org/pos-devices", { method: "GET" });
+    return { ok: res.ok, data: res.data?.devices, error: res.error };
+  }
+
+  async registerPosDevice(payload: {
+    deviceUuid: string;
+    deviceName: string;
+    deviceType?: string;
+    siteId?: string;
+    stripeReaderId?: string;
+  }): Promise<{ ok: boolean; data?: IPOSDeviceInfo; error?: string }> {
+    const res = await this.request<{ device: IPOSDeviceInfo }>("/api/org/pos-devices", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return { ok: res.ok, data: res.data?.device, error: res.error };
+  }
+
+  async getStripeReaders(): Promise<{ ok: boolean; data?: IStripeReaderInfo[]; error?: string }> {
+    const res = await this.request<{ readers: IStripeReaderInfo[] }>("/api/org/stripe-readers", { method: "GET" });
+    return { ok: res.ok, data: res.data?.readers, error: res.error };
+  }
+
+  async registerStripeReader(payload: {
+    label: string;
+    serialNumber: string;
+    deviceType?: string;
+    ipAddress?: string;
+    stripeLocationId?: string;
+    stripeReaderId?: string;
+  }): Promise<{ ok: boolean; data?: IStripeReaderInfo; error?: string }> {
+    const res = await this.request<{ reader: IStripeReaderInfo }>("/api/org/stripe-readers", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return { ok: res.ok, data: res.data?.reader, error: res.error };
+  }
+
+  // ─── Stripe Terminal Payment Orchestration ─────────────────────────────────
+  async getStripeConnectionToken(siteId?: string): Promise<{ ok: boolean; secret?: string; error?: string }> {
+    const res = await this.request<IConnectionTokenResponse>("/api/payments/stripe/connection-token", {
+      method: "POST",
+      body: JSON.stringify({ siteId }),
+    });
+    return { ok: res.ok, secret: res.data?.secret, error: res.error };
+  }
+
+  async createStripePaymentIntent(payload: ICreatePaymentIntentPayload): Promise<ICreatePaymentIntentResponse> {
+    const res = await this.request<ICreatePaymentIntentResponse>("/api/payments/stripe/create-intent", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok || !res.data) {
+      return {
+        ok: false,
+        paymentIntentId: "",
+        clientSecret: "",
+        posPaymentId: "",
+        paymentAttemptId: "",
+        amount: payload.amount,
+        currency: payload.currency || "mxn",
+        status: "FAILED",
+        error: res.error || "Failed to initialize Stripe payment intent on server.",
+      };
+    }
+    return res.data;
+  }
+
+  async verifyStripePaymentStatus(payload: IVerifyPaymentStatusPayload): Promise<IVerifyPaymentStatusResponse> {
+    const res = await this.request<IVerifyPaymentStatusResponse>("/api/payments/stripe/verify-status", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok || !res.data) {
+      return {
+        ok: false,
+        status: "UNKNOWN",
+        paymentAttemptStatus: "UNKNOWN",
+        posPaymentStatus: "UNKNOWN",
+        isUnknown: true,
+        error: res.error || "Failed to reach server to verify payment status.",
+      };
+    }
+    return res.data;
+  }
+
+  async cancelStripePaymentIntent(payload: { paymentIntentId: string; reason?: string }): Promise<{ ok: boolean; error?: string }> {
+    const res = await this.request<{ success: boolean }>("/api/payments/stripe/cancel-intent", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return { ok: res.ok, error: res.error };
+  }
+
+  // ─── Cross-Device Payment Handoff (iPad <-> iPhone) ───────────────────────
+  async createPaymentHandoff(payload: ICreateHandoffPayload & { siteId?: string }): Promise<ICreateHandoffResponse> {
+    const res = await this.request<ICreateHandoffResponse>("/api/payments/handoffs", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok || !res.data) {
+      return {
+        ok: false,
+        handoffId: "",
+        handoff: null as any,
+        error: res.error || "Failed to create payment handoff.",
+      };
+    }
+    return res.data;
+  }
+
+  async getPaymentHandoff(handoffId: string): Promise<{ ok: boolean; handoff?: IPaymentHandoffInfo; error?: string }> {
+    const res = await this.request<{ ok: boolean; handoff: IPaymentHandoffInfo }>(`/api/payments/handoffs/${handoffId}`, {
+      method: "GET",
+    });
+    return { ok: res.ok, handoff: res.data?.handoff, error: res.error };
+  }
+
+  async getPendingPaymentHandoffs(params: { siteId?: string | null; targetDeviceId?: string | null } = {}): Promise<{ ok: boolean; handoffs?: IPaymentHandoffInfo[]; error?: string }> {
+    const query = new URLSearchParams();
+    if (params.siteId) query.append("siteId", params.siteId);
+    if (params.targetDeviceId) query.append("targetDeviceId", params.targetDeviceId);
+    const res = await this.request<{ ok: boolean; handoffs: IPaymentHandoffInfo[] }>(`/api/payments/handoffs?${query.toString()}`, {
+      method: "GET",
+    });
+    return { ok: res.ok, handoffs: res.data?.handoffs || [], error: res.error };
+  }
+
+  async acceptPaymentHandoff(handoffId: string, payload: IAcceptHandoffPayload = {}): Promise<IAcceptHandoffResponse> {
+    const res = await this.request<IAcceptHandoffResponse>(`/api/payments/handoffs/${handoffId}/accept`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok || !res.data) {
+      return {
+        ok: false,
+        handoff: null as any,
+        error: res.error || "Failed to accept payment handoff.",
+      };
+    }
+    return res.data;
+  }
+
+  async rejectPaymentHandoff(handoffId: string, payload: { targetDeviceId?: string; reason?: string } = {}): Promise<{ ok: boolean; error?: string }> {
+    const res = await this.request<{ ok: boolean }>(`/api/payments/handoffs/${handoffId}/reject`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return { ok: res.ok, error: res.error };
+  }
+
+  async cancelPaymentHandoff(handoffId: string, reason?: string): Promise<{ ok: boolean; error?: string }> {
+    const res = await this.request<{ ok: boolean }>(`/api/payments/handoffs/${handoffId}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
+    return { ok: res.ok, error: res.error };
+  }
+
+  async getAvailableTargetDevices(siteId?: string): Promise<{ ok: boolean; devices?: IAvailableTargetDevice[]; error?: string }> {
+    const query = siteId ? `?siteId=${encodeURIComponent(siteId)}` : "";
+    const res = await this.request<{ ok: boolean; devices: IAvailableTargetDevice[] }>(`/api/org/pos-devices/available${query}`, {
+      method: "GET",
+    });
+    return { ok: res.ok, devices: res.data?.devices || [], error: res.error };
+  }
 }
+
