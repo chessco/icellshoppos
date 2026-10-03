@@ -34,6 +34,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!targetDeviceId && (!sourceDeviceId || body.sourceType === "WEB" || body.sourceType === "WEB_POS")) {
+      return NextResponse.json(
+        { error: "A target iPhone device (targetDeviceId) is required for Web POS payment handoff." },
+        { status: 400 }
+      );
+    }
+
     const result = await defaultPaymentHandoffService.createHandoff({
       organizationId,
       userId: session.userId,

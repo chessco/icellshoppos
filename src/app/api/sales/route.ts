@@ -400,6 +400,84 @@ export async function POST(request: NextRequest) {
     }
 
     const total = Math.max(0, subtotal - discount);
+
+    // PAYMENT-06W.1: Authoritative Electronic Payment / Stripe Settlement Verification
+    const stripeAllocatedAmount =
+      parseNumber(paymentBreakdown["Stripe Tap to Pay"]) ||
+      parseNumber(paymentBreakdown["Stripe — Tap to Pay en iPhone"]) ||
+      parseNumber(paymentBreakdown["Stripe"]) ||
+      (paymentMethod?.includes("Stripe") ? total : 0);
+
+    const providedPosPaymentIds = [
+      ...(body.posPaymentIds || []),
+    ].filter(Boolean);
+
+    if (stripeAllocatedAmount > 0) {
+      if (providedPosPaymentIds.length === 0) {
+        return NextResponse.json(
+          {
+            error: "El pago con Stripe no ha sido confirmado por la terminal o dispositivo iPhone. Se requiere un PosPayment exitoso.",
+            code: "UNSETTLED_STRIPE_PAYMENT",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (providedPosPaymentIds.length > 0) {
+      const posPayments = await db.posPayment.findMany({
+        where: {
+          id: { in: providedPosPaymentIds },
+          organizationId,
+        },
+      });
+
+      if (posPayments.length !== providedPosPaymentIds.length) {
+        return NextResponse.json(
+          {
+            error: "Uno o más pagos PosPayment no fueron encontrados o pertenecen a otra organización.",
+            code: "INVALID_POS_PAYMENT",
+          },
+          { status: 400 }
+        );
+      }
+
+      let totalSucceededPosPaymentAmount = 0;
+
+      for (const pp of posPayments) {
+        if (pp.status !== "SUCCEEDED") {
+          return NextResponse.json(
+            {
+              error: `El pago PosPayment (${pp.id}) se encuentra en estado ${pp.status} y no puede liquidar la venta.`,
+              code: "UNSETTLED_STRIPE_PAYMENT",
+            },
+            { status: 400 }
+          );
+        }
+
+        if (pp.saleId && pp.saleId !== requestedSaleId) {
+          return NextResponse.json(
+            {
+              error: `El pago PosPayment (${pp.id}) ya fue asociado a otra venta completada.`,
+              code: "PAYMENT_ALREADY_USED",
+            },
+            { status: 400 }
+          );
+        }
+
+        totalSucceededPosPaymentAmount += Number(pp.amount);
+      }
+
+      if (stripeAllocatedAmount > 0 && totalSucceededPosPaymentAmount < stripeAllocatedAmount - 0.01) {
+        return NextResponse.json(
+          {
+            error: `El monto confirmado por Stripe ($${totalSucceededPosPaymentAmount}) es insuficiente para cubrir el monto asignado ($${stripeAllocatedAmount}).`,
+            code: "INSUFFICIENT_SETTLED_AMOUNT",
+          },
+          { status: 400 }
+        );
+      }
+    }
     let customerId: string | null = null;
 
     const currentUser = await db.user.findUnique({

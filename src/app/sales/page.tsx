@@ -80,9 +80,36 @@ type PendingPurchaseOrder = {
 
 type PriceTier = "Price" | "Price 2" | "Price 3";
 
-type PaymentMethodName = "Cash" | "Transfer" | "Card" | "Trade-in" | "Other" | "Credit";
+type PaymentMethodName = "Cash" | "Transfer" | "Card" | "Trade-in" | "Other" | "Credit" | "Stripe Tap to Pay";
 
-const allPaymentMethods: PaymentMethodName[] = ["Cash", "Transfer", "Card", "Trade-in", "Other", "Credit"];
+const allPaymentMethods: PaymentMethodName[] = [
+  "Cash",
+  "Transfer",
+  "Card",
+  "Trade-in",
+  "Other",
+  "Credit",
+  "Stripe Tap to Pay",
+];
+
+const getPaymentMethodDisplayName = (method: PaymentMethodName) => {
+  switch (method) {
+    case "Cash":
+      return "Efectivo";
+    case "Transfer":
+      return "Transferencia";
+    case "Card":
+      return "Tarjeta (Terminal externa)";
+    case "Trade-in":
+      return "Trade-in";
+    case "Credit":
+      return "Crédito en tienda";
+    case "Other":
+      return "Otros";
+    case "Stripe Tap to Pay":
+      return "Stripe — Tap to Pay en iPhone";
+  }
+};
 
 const parseMoney = (value: unknown) => {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -114,12 +141,12 @@ const buildPaymentLabel = (
   fallback: string
 ) => {
   const entries = methods
-    .map((method) => ({ method, value: parseMoney(amounts[method]) }))
+    .map((method) => ({ method, displayName: getPaymentMethodDisplayName(method), value: parseMoney(amounts[method]) }))
     .filter((entry) => entry.value > 0);
 
   if (entries.length === 0) return fallback;
-  if (entries.length === 1) return entries[0].method;
-  return entries.map((entry) => `${entry.method}: ${money(entry.value)}`).join(" | ");
+  if (entries.length === 1) return entries[0].displayName;
+  return entries.map((entry) => `${entry.displayName}: ${money(entry.value)}`).join(" | ");
 };
 
 export default function SalesPage() {
@@ -154,6 +181,41 @@ export default function SalesPage() {
   const [companyName, setCompanyName] = useState("Pro Buyer");
   const [logoDataUrl, setLogoDataUrl] = useState<string | undefined>(undefined);
   const [receiptConfig, setReceiptConfig] = useState<ReceiptConfig>(DEFAULT_RECEIPT_CONFIG);
+
+  // Payment Capabilities & Stripe Handoff state
+  const [paymentCapabilities, setPaymentCapabilities] = useState<{
+    cashEnabled: boolean;
+    transferEnabled: boolean;
+    stripeReaderEnabled: boolean;
+    tapToPayIPhoneEnabled: boolean;
+    creditEnabled: boolean;
+    otherEnabled: boolean;
+  } | null>(null);
+
+  type TargetDevice = {
+    id: string;
+    deviceUuid: string;
+    deviceName: string;
+    siteName?: string | null;
+    lastSeenAt?: string | null;
+  };
+  const [targetDevices, setTargetDevices] = useState<TargetDevice[]>([]);
+  const [selectedTargetDeviceId, setSelectedTargetDeviceId] = useState<string>("");
+  const [handoffModalOpen, setHandoffModalOpen] = useState(false);
+  const [handoffBusy, setHandoffBusy] = useState(false);
+  const [activeHandoff, setActiveHandoff] = useState<{
+    id: string;
+    status: string;
+    amount: number;
+    posPaymentId?: string;
+    targetDeviceName?: string;
+    stripePaymentIntentId?: string;
+  } | null>(null);
+  const [settledPosPayment, setSettledPosPayment] = useState<{
+    posPaymentId: string;
+    amount: number;
+  } | null>(null);
+  const [handoffError, setHandoffError] = useState<string | null>(null);
 
   // Discount Authorization state
   type ActiveDiscountAuth = {
@@ -196,8 +258,13 @@ export default function SalesPage() {
     [customerWhatsappCountryCode, customerWhatsappNumber]
   );
   const availablePaymentMethods = useMemo(
-    () => (selectedCustomer?.creditEnabled ? allPaymentMethods : allPaymentMethods.filter((method) => method !== "Credit")),
-    [selectedCustomer?.creditEnabled]
+    () =>
+      allPaymentMethods.filter((method) => {
+        if (method === "Credit" && !selectedCustomer?.creditEnabled) return false;
+        if (method === "Stripe Tap to Pay" && !paymentCapabilities?.tapToPayIPhoneEnabled) return false;
+        return true;
+      }),
+    [selectedCustomer?.creditEnabled, paymentCapabilities?.tapToPayIPhoneEnabled]
   );
   const tradeInAmount = useMemo(() => parseMoney(paymentAmounts["Trade-in"]), [paymentAmounts]);
   const activeSaleId = pendingPurchaseOrderSaleId || draftSaleId || "";
@@ -245,11 +312,12 @@ export default function SalesPage() {
   const loadData = async () => {
     try {
       setBusy(true);
-      const [inventoryRes, customersRes, profileRes, authRes] = await Promise.all([
+      const [inventoryRes, customersRes, profileRes, authRes, capRes] = await Promise.all([
         fetch("/api/inventory?status=Available"),
         fetch("/api/customers"),
         fetch("/api/auth/user-profile"),
         fetch("/api/auth/me", { cache: "no-store" }),
+        fetch("/api/org/payment-capabilities", { cache: "no-store" }),
       ]);
 
       if (inventoryRes.ok) {
@@ -285,6 +353,13 @@ export default function SalesPage() {
         setCanApproveDiscounts(isSuper || role === "superadmin" || role === "admin" || hasApprovePerm);
       }
 
+      if (capRes.ok) {
+        const capData = await capRes.json().catch(() => ({}));
+        if (capData?.capabilities) {
+          setPaymentCapabilities(capData.capabilities);
+        }
+      }
+
       setStatus(null);
     } catch {
       setStatus("Failed to load checkout data.");
@@ -306,6 +381,79 @@ export default function SalesPage() {
       })
       .catch(() => setReceiptConfig(DEFAULT_RECEIPT_CONFIG));
   }, []);
+
+  // Browser Reload / Recovery for active handoffs
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saleId = activeSaleId;
+    if (!saleId) return;
+
+    const saved = window.localStorage.getItem(`active_web_handoff_${saleId}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed?.id) {
+          fetch(`/api/payments/handoffs/${parsed.id}`, { cache: "no-store" })
+            .then((r) => r.json())
+            .then((res) => {
+              if (res.ok && res.handoff) {
+                setActiveHandoff(res.handoff);
+                if (res.handoff.status === "SUCCEEDED") {
+                  setSettledPosPayment({
+                    posPaymentId: res.handoff.posPaymentId,
+                    amount: res.handoff.amount,
+                  });
+                }
+              }
+            })
+            .catch(() => {});
+        }
+      } catch {
+        // ignore parse error
+      }
+    }
+  }, [activeSaleId]);
+
+  // Active Handoff Live Polling
+  useEffect(() => {
+    if (!activeHandoff || ["SUCCEEDED", "FAILED", "CANCELED", "EXPIRED"].includes(activeHandoff.status)) {
+      return;
+    }
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/payments/handoffs/${activeHandoff.id}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        const updated = data.handoff;
+        if (updated) {
+          setActiveHandoff((prev) => ({
+            ...prev,
+            ...updated,
+            posPaymentId: updated.posPaymentId || prev?.posPaymentId,
+          }));
+
+          if (updated.status === "SUCCEEDED") {
+            setSettledPosPayment({
+              posPaymentId: updated.posPaymentId,
+              amount: updated.amount,
+            });
+            if (typeof window !== "undefined") {
+              window.localStorage.removeItem(`active_web_handoff_${activeSaleId}`);
+            }
+          } else if (["FAILED", "CANCELED", "EXPIRED"].includes(updated.status)) {
+            if (typeof window !== "undefined") {
+              window.localStorage.removeItem(`active_web_handoff_${activeSaleId}`);
+            }
+          }
+        }
+      } catch {
+        // silent retry
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [activeHandoff, activeSaleId]);
 
   useEffect(() => {
     if (!activeDiscountAuth || activeDiscountAuth.status !== "PENDING") return;
@@ -530,19 +678,47 @@ export default function SalesPage() {
     return { cost, subtotal, discount, sale, margin: sale - cost };
   }, [cart, appliedDiscount]);
 
-  const paidTotal = useMemo(
+  const allocatedTotal = useMemo(
     () => availablePaymentMethods.reduce((sum, method) => sum + parseMoney(paymentAmounts[method]), 0),
     [availablePaymentMethods, paymentAmounts]
   );
 
-  const remaining = totals.sale - paidTotal;
+  const stripeAllocated = useMemo(
+    () => parseMoney(paymentAmounts["Stripe Tap to Pay"]),
+    [paymentAmounts]
+  );
+
+  const stripeSettled = useMemo(() => {
+    if (activeHandoff?.status === "SUCCEEDED" && (activeHandoff.amount >= stripeAllocated || stripeAllocated <= 0)) {
+      return stripeAllocated;
+    }
+    if (settledPosPayment && (settledPosPayment.amount >= stripeAllocated || stripeAllocated <= 0)) {
+      return stripeAllocated;
+    }
+    return 0;
+  }, [activeHandoff, settledPosPayment, stripeAllocated]);
+
+  const settledTotal = useMemo(() => {
+    const manualSum = availablePaymentMethods
+      .filter((m) => m !== "Stripe Tap to Pay")
+      .reduce((sum, method) => sum + parseMoney(paymentAmounts[method]), 0);
+    return manualSum + stripeSettled;
+  }, [availablePaymentMethods, paymentAmounts, stripeSettled]);
+
+  const remainingAllocated = totals.sale - allocatedTotal;
+  const outstandingToSettle = totals.sale - settledTotal;
+  const isStripeFullySettled = stripeAllocated <= 0 || stripeSettled >= stripeAllocated;
+
   const paymentMethodsWithAmount = useMemo(
     () => availablePaymentMethods.filter((method) => parseMoney(paymentAmounts[method]) > 0),
     [availablePaymentMethods, paymentAmounts]
   );
+
   const hasPaymentCoverage =
     totals.sale <= 0 ||
-    (paymentMethodsWithAmount.length > 0 && Math.abs(remaining) <= 0.01);
+    (paymentMethodsWithAmount.length > 0 &&
+      Math.abs(remainingAllocated) <= 0.01 &&
+      isStripeFullySettled);
 
   const paymentSummaryLabel = useMemo(() => {
     return buildPaymentLabel(availablePaymentMethods, paymentAmounts, "");
@@ -571,8 +747,8 @@ export default function SalesPage() {
     const otherMethodsHaveAmount = availablePaymentMethods.some(
       (currentMethod) => currentMethod !== method && parseMoney(paymentAmounts[currentMethod]) > 0
     );
-    if (otherMethodsHaveAmount && remaining > 0.01) return "Remaining";
-    return `100% ${method}`;
+    if (otherMethodsHaveAmount && remainingAllocated > 0.01) return "Remaining";
+    return `100% ${getPaymentMethodDisplayName(method)}`;
   };
 
   const handlePrintLastReceipt = () => {
@@ -830,6 +1006,114 @@ export default function SalesPage() {
     }
   };
 
+  const fetchAvailableIPhones = async () => {
+    try {
+      setHandoffBusy(true);
+      setHandoffError(null);
+      const res = await fetch("/api/org/pos-devices/available", { cache: "no-store" });
+      if (!res.ok) {
+        setHandoffError("No se pudieron cargar los dispositivos disponibles.");
+        return;
+      }
+      const data = await res.json();
+      const devices = (data.devices || []).map((d: any) => ({
+        id: d.id,
+        deviceUuid: d.deviceUuid,
+        deviceName: d.deviceName,
+        siteName: d.siteName,
+        lastSeenAt: d.lastSeenAt,
+      }));
+      setTargetDevices(devices);
+      if (devices.length > 0 && !selectedTargetDeviceId) {
+        setSelectedTargetDeviceId(devices[0].id);
+      }
+    } catch {
+      setHandoffError("Error al consultar dispositivos iPhone.");
+    } finally {
+      setHandoffBusy(false);
+    }
+  };
+
+  const handleOpenHandoffModal = async () => {
+    if (stripeAllocated <= 0) {
+      setStatus("Asigna un monto a Stripe Tap to Pay antes de iniciar el cobro.");
+      return;
+    }
+    setHandoffModalOpen(true);
+    await fetchAvailableIPhones();
+  };
+
+  const handleStartHandoff = async () => {
+    if (!selectedTargetDeviceId) {
+      setHandoffError("Debes seleccionar un iPhone autorizado para enviar el cobro.");
+      return;
+    }
+    const saleId = getOrCreateSaleId();
+    try {
+      setHandoffBusy(true);
+      setHandoffError(null);
+      const response = await fetch("/api/payments/handoffs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          saleId,
+          targetDeviceId: selectedTargetDeviceId,
+          sourceType: "WEB_POS",
+          amount: Math.round(stripeAllocated),
+          currency: "mxn",
+          idempotencyKey: `web-handoff-${saleId}-${Math.round(stripeAllocated)}`,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        setHandoffError(data.error || "No se pudo iniciar el cobro en el iPhone.");
+        return;
+      }
+
+      const handoffInfo = {
+        id: data.handoffId || data.handoff.id,
+        status: data.handoff.status,
+        amount: data.handoff.amount,
+        posPaymentId: data.handoff.posPaymentId,
+        targetDeviceName: targetDevices.find((d) => d.id === selectedTargetDeviceId)?.deviceName || "iPhone",
+        stripePaymentIntentId: data.stripePaymentIntentId,
+      };
+
+      setActiveHandoff(handoffInfo);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(`active_web_handoff_${saleId}`, JSON.stringify(handoffInfo));
+      }
+    } catch {
+      setHandoffError("Error de conexión al enviar el cobro al iPhone.");
+    } finally {
+      setHandoffBusy(false);
+    }
+  };
+
+  const handleCancelHandoff = async () => {
+    if (!activeHandoff) return;
+    try {
+      setHandoffBusy(true);
+      const res = await fetch(`/api/payments/handoffs/${activeHandoff.id}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "Cancelado desde Web POS" }),
+      });
+      const data = await res.json();
+      if (data.handoff) {
+        setActiveHandoff((prev) => (prev ? { ...prev, status: data.handoff.status } : null));
+      }
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(`active_web_handoff_${activeSaleId}`);
+      }
+    } catch {
+      setHandoffError("Error al cancelar el cobro.");
+    } finally {
+      setHandoffBusy(false);
+    }
+  };
+
   const submitCheckout = async (saleId: string) => {
     if (cart.length === 0) {
       setStatus("Add at least one device to cart.");
@@ -864,10 +1148,11 @@ export default function SalesPage() {
       sendReceiptEmail,
       paymentMethod: paymentSummaryLabel,
       paymentBreakdown: Object.fromEntries(
-        allPaymentMethods
+        availablePaymentMethods
           .map((method) => [method, parseMoney(paymentAmounts[method])] as const)
           .filter(([, amount]) => amount > 0)
       ),
+      posPaymentIds: settledPosPayment?.posPaymentId ? [settledPosPayment.posPaymentId] : undefined,
       notes: notes.trim() || undefined,
       authorizationId:
         activeDiscountAuth && (activeDiscountAuth.status === "APPROVED" || activeDiscountAuth.status === "PARTIAL")
@@ -922,6 +1207,8 @@ export default function SalesPage() {
       setLastCompletedSale(receiptSnapshot);
       setCart([]);
       setActiveDiscountAuth(null);
+      setActiveHandoff(null);
+      setSettledPosPayment(null);
       setNotes("");
       setCustomerName("");
       setCustomerEmail("");
@@ -1409,77 +1696,149 @@ export default function SalesPage() {
               </div>
 
               <div className="mt-4 grid gap-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#6a4d3a]">Split Payment Breakdown (Optional)</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#6a4d3a]">Desglose de Pago / Métodos (Opcional)</p>
 
-                  <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                  {availablePaymentMethods.map((method) => (
-                    <label key={method} className="grid gap-1 text-xs text-[#5c4332]">
-                      {method}
-                      <div className="flex gap-2">
-                        <input
-                          value={paymentAmounts[method]}
-                          onChange={(event) =>
-                            setPaymentAmounts((prev) => ({
-                              ...prev,
-                              [method]: event.target.value,
-                            }))
-                          }
-                          placeholder="0"
-                          className="min-w-0 flex-1 rounded-lg border border-[#e6d6c6] bg-[#fffaf3] px-2 py-1 outline-none focus:border-[#1f1a16]"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => fillPaymentAmount(method)}
-                          className="rounded-lg border border-[#d6c1ad] px-2 py-1 text-[11px] font-semibold text-[#3b2a1e]"
-                        >
-                          {getPaymentShortcutLabel(method)}
-                        </button>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3">
+                  {availablePaymentMethods.map((method) => {
+                    const isStripe = method === "Stripe Tap to Pay";
+                    const isExternalCard = method === "Card";
+                    const amountForMethod = parseMoney(paymentAmounts[method]);
+
+                    return (
+                      <div
+                        key={method}
+                        className={`grid gap-1.5 rounded-xl border p-2.5 text-xs transition-colors ${
+                          isStripe
+                            ? "border-indigo-200 bg-indigo-50/50 text-indigo-950"
+                            : "border-[#e6d6c6] bg-[#fffaf3] text-[#5c4332]"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold">{getPaymentMethodDisplayName(method)}</span>
+                          {isExternalCard && (
+                            <span className="text-[10px] text-gray-500 italic">Manual</span>
+                          )}
+                          {isStripe && (
+                            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
+                              Stripe
+                            </span>
+                          )}
+                        </div>
+
+                        {isExternalCard && (
+                          <p className="text-[10px] text-gray-500 leading-tight">
+                            Cobro en terminal bancaria externa o registro manual. No pasa por Stripe.
+                          </p>
+                        )}
+
+                        <div className="flex gap-2">
+                          <input
+                            value={paymentAmounts[method]}
+                            onChange={(event) =>
+                              setPaymentAmounts((prev) => ({
+                                ...prev,
+                                [method]: event.target.value,
+                              }))
+                            }
+                            placeholder="0"
+                            className="min-w-0 flex-1 rounded-lg border border-[#e6d6c6] bg-white px-2 py-1 outline-none focus:border-[#1f1a16]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => fillPaymentAmount(method)}
+                            className="rounded-lg border border-[#d6c1ad] px-2 py-1 text-[11px] font-semibold text-[#3b2a1e] hover:bg-[#f5e4d5]"
+                          >
+                            {getPaymentShortcutLabel(method)}
+                          </button>
+                        </div>
+
+                        {isStripe && amountForMethod > 0 && (
+                          <div className="mt-1">
+                            {stripeSettled >= amountForMethod ? (
+                              <div className="flex items-center justify-between rounded-lg bg-emerald-100 p-1.5 text-[11px] font-bold text-emerald-800">
+                                <span>✅ Confirmado (${money(stripeSettled)})</span>
+                                <button
+                                  type="button"
+                                  onClick={handleOpenHandoffModal}
+                                  className="text-[10px] underline hover:text-emerald-950"
+                                >
+                                  Ver detalle
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={handleOpenHandoffModal}
+                                className="w-full rounded-lg bg-indigo-600 px-2.5 py-1.5 text-center text-xs font-bold text-white shadow hover:bg-indigo-700 transition-colors"
+                              >
+                                {activeHandoff && !["FAILED", "CANCELED", "EXPIRED"].includes(activeHandoff.status)
+                                  ? `⏳ Estado del Cobro (${money(amountForMethod)})`
+                                  : `📱 Cobrar con iPhone (${money(amountForMethod)})`}
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    </label>
-                  ))}
+                    );
+                  })}
                 </div>
+
+                {/* Resumen de Autoridad Financiera: Asignación vs Liquidación */}
+                <div className="mt-2 grid grid-cols-2 gap-2 rounded-xl border border-[#e6d6c6] bg-[#fffaf3] p-3 text-xs text-[#5c4332] sm:grid-cols-4">
+                  <div>
+                    <span className="text-[10px] uppercase text-[#8a6b52] font-semibold block">Total de Venta</span>
+                    <span className="text-sm font-bold text-[#1f1a16]">{money(totals.sale)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase text-[#8a6b52] font-semibold block">Asignado</span>
+                    <span className="text-sm font-bold text-[#1f1a16]">{money(allocatedTotal)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase text-[#8a6b52] font-semibold block">Cobrado / Confirmado</span>
+                    <span className="text-sm font-bold text-emerald-700">{money(settledTotal)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase text-[#8a6b52] font-semibold block">Pendiente por Cobrar</span>
+                    <span className={`text-sm font-bold ${outstandingToSettle > 0.01 ? "text-[#c24d34]" : "text-emerald-700"}`}>
+                      {money(Math.max(outstandingToSettle, 0))}
+                    </span>
+                  </div>
+                </div>
+
                 <div className="text-xs text-[#5c4332]">
-                  Paid: <span className="font-semibold">{money(paidTotal)}</span> | Remaining: <span className={`font-semibold ${remaining < -0.01 ? "text-[#c24d34]" : ""}`}>{money(Math.max(remaining, 0))}</span>
+                  Método principal / desglose: <span className="font-semibold">{paymentSummaryLabel || "Sin definir"}</span>
                 </div>
-                <div className="text-xs text-[#5c4332]">
-                  Payment method used: <span className="font-semibold">{paymentSummaryLabel || "Not set"}</span>
-                </div>
-                {!hasPaymentCoverage && (
-                  <div className="text-xs font-semibold text-[#c24d34]">
-                    Payment amounts must fully cover the sale total before checkout.
+
+                {creditAmount > 0 && selectedCustomer?.creditEnabled && (
+                  <div className="rounded-xl border border-[#ead8c6] bg-[#fffaf3] px-3 py-2 text-xs text-[#7a4e0e]">
+                    Porción a Crédito: <span className="font-bold">{money(creditAmount)}</span> se cargará al saldo pendiente de {selectedCustomer.name}.
                   </div>
                 )}
 
-                  {creditAmount > 0 && selectedCustomer?.creditEnabled && (
-                    <div className="rounded-xl border border-[#ead8c6] bg-[#fffaf3] px-3 py-2 text-xs text-[#7a4e0e]">
-                      Credit portion: <span className="font-bold">{money(creditAmount)}</span> will be added to {selectedCustomer.name}&apos;s outstanding balance.
-                    </div>
-                  )}
-
-                  {tradeInAmount > 0 && (
-                    <div className="rounded-xl border border-[#d6c1ad] bg-[#fff6ea] px-3 py-3 text-sm text-[#5c4332]">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-[#3b2a1e]">Trade-in captured: {money(tradeInAmount)}</p>
-                          <p className="text-xs text-[#6a4d3a]">
-                            Add the received device to inventory with supplier <span className="font-semibold">Trade-in</span> and comments linked to sale {activeSaleId || "(generated on save)"}.
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => openTradeInPopup(getOrCreateSaleId())}
-                          className="rounded-full border border-[#d6c1ad] px-4 py-2 text-xs font-semibold text-[#3b2a1e] hover:bg-[#f5e4d5]"
-                        >
-                          Add to Inventory Now
-                        </button>
-                      </div>
-                      {tradeInSavedSaleId === activeSaleId && activeSaleId && (
-                        <p className="mt-2 text-xs font-semibold text-[#1a5c30]">
-                          Trade-in device already saved for this sale.
+                {tradeInAmount > 0 && (
+                  <div className="rounded-xl border border-[#d6c1ad] bg-[#fff6ea] px-3 py-3 text-sm text-[#5c4332]">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-[#3b2a1e]">Trade-in capturado: {money(tradeInAmount)}</p>
+                        <p className="text-xs text-[#6a4d3a]">
+                          Agrega el equipo recibido al inventario con proveedor <span className="font-semibold">Trade-in</span> y comentarios vinculados a la venta {activeSaleId || "(generado al guardar)"}.
                         </p>
-                      )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openTradeInPopup(getOrCreateSaleId())}
+                        className="rounded-full border border-[#d6c1ad] px-4 py-2 text-xs font-semibold text-[#3b2a1e] hover:bg-[#f5e4d5]"
+                      >
+                        Agregar al Inventario Ahora
+                      </button>
                     </div>
-                  )}
+                    {tradeInSavedSaleId === activeSaleId && activeSaleId && (
+                      <p className="mt-2 text-xs font-semibold text-[#1a5c30]">
+                        Equipo trade-in ya registrado para esta venta.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {cart.length > 0 && (!customerName.trim() || !fullCustomerWhatsapp || !hasPaymentCoverage || activeDiscountAuth?.status === "PENDING") && (
@@ -1522,9 +1881,15 @@ export default function SalesPage() {
                     </div>
                   )}
 
-                  {!hasPaymentCoverage && (
+                  {Math.abs(remainingAllocated) > 0.01 && (
                     <div className="rounded-xl bg-white/80 p-2 border border-amber-200 text-amber-900">
-                      • Falta cubrir el saldo de la venta (Restante: <strong>{money(Math.max(0, remaining))}</strong>).
+                      • Falta cubrir el saldo total asignado de la venta (Restante: <strong>{money(Math.max(0, remainingAllocated))}</strong>).
+                    </div>
+                  )}
+
+                  {stripeAllocated > 0 && !isStripeFullySettled && (
+                    <div className="rounded-xl bg-white/80 p-2 border border-amber-200 text-amber-900">
+                      • Cobro de Stripe (${money(stripeAllocated)}) pendiente de procesar. Presiona <strong>&quot;Cobrar con iPhone&quot;</strong> para enviar la solicitud al dispositivo.
                     </div>
                   )}
 
@@ -1647,6 +2012,198 @@ export default function SalesPage() {
                     {discountRequestBusy ? "Enviando..." : "Enviar a Autorización"}
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Stripe Tap to Pay Handoff */}
+          {handoffModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+              <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+                <div className="flex items-center justify-between border-b pb-3">
+                  <div>
+                    <h3 className="text-lg font-bold text-[#1f1a16] flex items-center gap-2">
+                      <span>📱</span> Cobro con Stripe — Tap to Pay
+                    </h3>
+                    <p className="text-xs text-[#6a4d3a]">
+                      Monto a cobrar: <span className="font-bold text-indigo-700">{money(stripeAllocated)}</span>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setHandoffModalOpen(false)}
+                    className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {handoffError && (
+                  <div className="mt-4 rounded-xl bg-red-50 p-3 text-xs font-semibold text-red-800 border border-red-200">
+                    {handoffError}
+                  </div>
+                )}
+
+                {/* Si no hay handoff activo o ya concluyó con error/cancelación/expiración -> Selección de dispositivo */}
+                {(!activeHandoff || ["FAILED", "CANCELED", "EXPIRED"].includes(activeHandoff.status)) && (
+                  <div className="mt-4">
+                    <p className="text-xs font-bold uppercase tracking-wider text-[#6a4d3a] mb-2">
+                      1. Selecciona el iPhone con Tap to Pay:
+                    </p>
+
+                    {targetDevices.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">
+                        <p className="font-semibold">No se encontraron iPhones activos con Tap to Pay.</p>
+                        <p className="mt-1 text-[11px] text-amber-800">
+                          Asegúrate de que la app Pro Buyer esté abierta en el iPhone en la misma sucursal y autorizada con Tap to Pay.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={fetchAvailableIPhones}
+                          disabled={handoffBusy}
+                          className="mt-2.5 rounded-lg border border-amber-400 bg-white px-3 py-1 text-xs font-bold text-amber-900 hover:bg-amber-100"
+                        >
+                          {handoffBusy ? "Buscando..." : "↻ Buscar Dispositivos de Nuevo"}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {targetDevices.map((device) => (
+                          <label
+                            key={device.id}
+                            className={`flex items-center justify-between rounded-xl border p-3 cursor-pointer text-xs transition-colors ${
+                              selectedTargetDeviceId === device.id
+                                ? "border-indigo-600 bg-indigo-50/70 text-indigo-950 font-semibold ring-1 ring-indigo-600"
+                                : "border-gray-200 bg-gray-50/50 text-gray-800 hover:bg-gray-100"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <input
+                                type="radio"
+                                name="targetDevice"
+                                value={device.id}
+                                checked={selectedTargetDeviceId === device.id}
+                                onChange={() => setSelectedTargetDeviceId(device.id)}
+                                className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
+                              />
+                              <div>
+                                <p className="font-bold">{device.deviceName}</p>
+                                <p className="text-[11px] text-gray-500">
+                                  {device.siteName ? `Sucursal: ${device.siteName}` : "Sucursal Principal"}
+                                </p>
+                              </div>
+                            </div>
+                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                              Activo
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="mt-6 flex items-center justify-between border-t pt-4">
+                      <button
+                        type="button"
+                        onClick={() => setHandoffModalOpen(false)}
+                        className="rounded-full border border-[#d6c1ad] px-4 py-2 text-xs font-semibold text-[#5c4332]"
+                      >
+                        Cerrar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleStartHandoff}
+                        disabled={handoffBusy || !selectedTargetDeviceId || targetDevices.length === 0}
+                        className="rounded-full bg-indigo-600 px-5 py-2 text-xs font-bold text-white shadow hover:bg-indigo-700 disabled:opacity-50"
+                      >
+                        {handoffBusy ? "Iniciando..." : `Enviar Cobro (${money(stripeAllocated)})`}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Si hay un handoff activo en progreso o completado */}
+                {activeHandoff && !["FAILED", "CANCELED", "EXPIRED"].includes(activeHandoff.status) && (
+                  <div className="mt-4 space-y-4">
+                    <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 text-center">
+                      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-inner">
+                        {activeHandoff.status === "SUCCEEDED" && <span className="text-2xl">✅</span>}
+                        {["WAITING_FOR_DEVICE", "ASSIGNED"].includes(activeHandoff.status) && (
+                          <span className="text-2xl animate-pulse">⏳</span>
+                        )}
+                        {activeHandoff.status === "ACCEPTED" && <span className="text-2xl animate-bounce">📱</span>}
+                        {activeHandoff.status === "PAYMENT_PROCESSING" && <span className="text-2xl animate-spin">💳</span>}
+                        {activeHandoff.status === "VERIFYING" && <span className="text-2xl animate-spin">🔄</span>}
+                        {activeHandoff.status === "UNKNOWN" && <span className="text-2xl">⚠️</span>}
+                      </div>
+
+                      <h4 className="mt-3 text-sm font-bold text-indigo-950">
+                        {activeHandoff.status === "WAITING_FOR_DEVICE" && "Esperando aceptación en iPhone"}
+                        {activeHandoff.status === "ASSIGNED" && `Cobro asignado a ${activeHandoff.targetDeviceName || "iPhone"}`}
+                        {activeHandoff.status === "ACCEPTED" && "Aceptado en iPhone. Esperando tarjeta del cliente..."}
+                        {activeHandoff.status === "PAYMENT_PROCESSING" && "Procesando pago en iPhone (Tap to Pay)..."}
+                        {activeHandoff.status === "VERIFYING" && "Verificando transacción con Stripe..."}
+                        {activeHandoff.status === "SUCCEEDED" && "¡Pago aprobado con éxito por Stripe!"}
+                        {activeHandoff.status === "UNKNOWN" && "Verificando estado del pago con Stripe..."}
+                      </h4>
+
+                      <p className="mt-1 text-xs text-indigo-800">
+                        {activeHandoff.status === "WAITING_FOR_DEVICE" &&
+                          "El vendedor debe presionar 'Aceptar Cobro' en la app de Pro Buyer en el iPhone."}
+                        {activeHandoff.status === "ASSIGNED" &&
+                          "Solicitud enviada. El iPhone está listo para iniciar la sesión de Tap to Pay."}
+                        {activeHandoff.status === "ACCEPTED" &&
+                          "El cliente debe acercar su tarjeta contactless o dispositivo móvil a la parte superior del iPhone."}
+                        {activeHandoff.status === "PAYMENT_PROCESSING" &&
+                          "Leyendo datos criptográficos de la tarjeta sin almacenar PAN/CVV."}
+                        {activeHandoff.status === "VERIFYING" &&
+                          "Confirmando autorización con el procesador Stripe."}
+                        {activeHandoff.status === "SUCCEEDED" &&
+                          `El monto de ${money(activeHandoff.amount)} ha sido liquidado autoritativamente.`}
+                        {activeHandoff.status === "UNKNOWN" &&
+                          "Transacción pendiente de resolución. No reintente para evitar cobros duplicados."}
+                      </p>
+
+                      {activeHandoff.posPaymentId && (
+                        <p className="mt-2 text-[10px] text-gray-500 font-mono">
+                          PosPayment ID: {activeHandoff.posPaymentId}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between border-t pt-4">
+                      {["WAITING_FOR_DEVICE", "ASSIGNED", "ACCEPTED"].includes(activeHandoff.status) ? (
+                        <button
+                          type="button"
+                          onClick={handleCancelHandoff}
+                          disabled={handoffBusy}
+                          className="rounded-full border border-red-300 bg-white px-4 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
+                        >
+                          Cancelar Cobro
+                        </button>
+                      ) : (
+                        <div />
+                      )}
+
+                      {activeHandoff.status === "SUCCEEDED" ? (
+                        <button
+                          type="button"
+                          onClick={() => setHandoffModalOpen(false)}
+                          className="rounded-full bg-emerald-700 px-6 py-2 text-xs font-bold text-white shadow hover:bg-emerald-800"
+                        >
+                          Continuar Venta
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setHandoffModalOpen(false)}
+                          className="rounded-full border border-gray-300 px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                        >
+                          Minimizar (Seguirá en progreso)
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
