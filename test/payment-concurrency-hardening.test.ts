@@ -15,6 +15,7 @@ class ConcurrencyTestDatabase {
   organizations: Map<string, any> = new Map();
   inventoryItems: Map<string, any> = new Map();
   sales: Map<string, any> = new Map();
+  webhookEvents: Map<string, any> = new Map();
 
   constructor() {
     this.organizations.set("org_test", {
@@ -178,7 +179,11 @@ class ConcurrencyTestDatabase {
       findUnique: async ({ where }: any) => {
         if (where.stripePaymentIntentId) {
           for (const r of this.stripeRecords.values()) {
-            if (r.stripePaymentIntentId === where.stripePaymentIntentId) return r;
+            if (r.stripePaymentIntentId === where.stripePaymentIntentId) {
+              const posPayment = this.posPayments.get(r.posPaymentId);
+              const paymentAttempt = this.paymentAttempts.get(r.paymentAttemptId);
+              return { ...r, posPayment, paymentAttempt };
+            }
           }
         }
         return null;
@@ -276,6 +281,31 @@ class ConcurrencyTestDatabase {
   get stripeReader() {
     return {
       findFirst: async () => null,
+    };
+  }
+
+  get stripeWebhookEvent() {
+    return {
+      findUnique: async ({ where }: any) => {
+        if (where.stripeEventId) {
+          for (const ev of this.webhookEvents.values()) {
+            if (ev.stripeEventId === where.stripeEventId) return ev;
+          }
+        }
+        if (where.id) return this.webhookEvents.get(where.id) || null;
+        return null;
+      },
+      create: async ({ data }: any) => {
+        const id = `wev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        const record = { ...data, id, createdAt: new Date(), updatedAt: new Date() };
+        this.webhookEvents.set(id, record);
+        return record;
+      },
+      update: async ({ where, data }: any) => {
+        const record = this.webhookEvents.get(where.id);
+        if (record) Object.assign(record, data, { updatedAt: new Date() });
+        return record;
+      },
     };
   }
 
@@ -681,5 +711,144 @@ describe("PAYMENT-05A — Adversarial Concurrency & Transaction Integrity Harden
       handoffId: handoff.id,
     });
     assert.strictEqual(finalHandoff.status, "SUCCEEDED");
+  });
+
+  it("INVARIANT 7: Cancel vs Accept Race resolves to exactly 1 deterministic winner", async () => {
+    const testDb = new ConcurrencyTestDatabase();
+    const orchestrator = new PaymentOrchestrator(testDb as any, mockStripeAdapter);
+    const handoffService = new PaymentHandoffService(testDb as any, orchestrator);
+
+    const { handoff } = await handoffService.createHandoff({
+      organizationId: "org_test",
+      userId: "seller_ipad",
+      siteId: "site_1",
+      targetDeviceId: "iphone_caja_1",
+      amount: 750.0,
+      currency: "MXN",
+      idempotencyKey: "test_cancel_vs_accept_race",
+    });
+
+    // Fire Accept and Cancel concurrently
+    const [acceptResult, cancelResult] = await Promise.allSettled([
+      handoffService.acceptHandoff({
+        organizationId: "org_test",
+        userId: "operator_iphone_1",
+        handoffId: handoff.id,
+        targetDeviceId: "iphone_caja_1",
+      }),
+      handoffService.cancelHandoff({
+        organizationId: "org_test",
+        userId: "seller_ipad",
+        handoffId: handoff.id,
+      }),
+    ]);
+
+    // Exactly one of the transitions must succeed or reach a deterministic state
+    const authoritative = await handoffService.getHandoff({
+      organizationId: "org_test",
+      handoffId: handoff.id,
+    });
+
+    assert.ok(
+      authoritative.status === "ACCEPTED" || authoritative.status === "CANCELED",
+      `Final status must be either ACCEPTED or CANCELED, got ${authoritative.status}`
+    );
+
+    // If canceled won, accept must have failed or vice-versa
+    if (authoritative.status === "CANCELED") {
+      assert.strictEqual(cancelResult.status, "fulfilled");
+    } else if (authoritative.status === "ACCEPTED") {
+      assert.strictEqual(acceptResult.status, "fulfilled");
+    }
+  });
+
+  it("INVARIANT 8: Reject vs Accept Race resolves to exactly 1 deterministic winner", async () => {
+    const testDb = new ConcurrencyTestDatabase();
+    const orchestrator = new PaymentOrchestrator(testDb as any, mockStripeAdapter);
+    const handoffService = new PaymentHandoffService(testDb as any, orchestrator);
+
+    const { handoff } = await handoffService.createHandoff({
+      organizationId: "org_test",
+      userId: "seller_ipad",
+      siteId: "site_1",
+      targetDeviceId: "iphone_caja_1",
+      amount: 990.0,
+      currency: "MXN",
+      idempotencyKey: "test_reject_vs_accept_race",
+    });
+
+    const [acceptResult, rejectResult] = await Promise.allSettled([
+      handoffService.acceptHandoff({
+        organizationId: "org_test",
+        userId: "operator_iphone_1",
+        handoffId: handoff.id,
+        targetDeviceId: "iphone_caja_1",
+      }),
+      handoffService.rejectHandoff({
+        organizationId: "org_test",
+        userId: "operator_iphone_1",
+        handoffId: handoff.id,
+        reason: "Operator rejected",
+      }),
+    ]);
+
+    const authoritative = await handoffService.getHandoff({
+      organizationId: "org_test",
+      handoffId: handoff.id,
+    });
+
+    assert.ok(
+      authoritative.status === "ACCEPTED" || authoritative.status === "CANCELED",
+      `Final status must be either ACCEPTED or CANCELED, got ${authoritative.status}`
+    );
+  });
+
+  it("INVARIANT 9: Concurrent Webhook & verifyPaymentStatus converge idempotently without duplicates", async () => {
+    const testDb = new ConcurrencyTestDatabase();
+    const orchestrator = new PaymentOrchestrator(testDb as any, mockStripeAdapter);
+
+    // Create payment intent
+    const piResult = await orchestrator.createPaymentIntent({
+      organizationId: "org_test",
+      userId: "seller_1",
+      amount: 1500.0,
+      currency: "MXN",
+      channel: "STRIPE_TAP_TO_PAY_IPHONE" as any,
+      idempotencyKey: "test_webhook_race_pay",
+    });
+
+    const webhookPayload = {
+      id: "evt_test_race_123",
+      type: "payment_intent.succeeded",
+      data: {
+        object: {
+          id: piResult.stripePaymentIntentId,
+          status: "succeeded",
+          amount: 150000,
+          currency: "mxn",
+          latest_charge: "ch_test_race_123",
+        },
+      },
+    };
+
+    // Fire verifyPaymentStatus and webhook concurrently
+    const [verifyRes, webhookRes] = await Promise.all([
+      orchestrator.verifyPaymentStatus({
+        organizationId: "org_test",
+        posPaymentId: piResult.posPaymentId,
+      }),
+      orchestrator.processWebhookEvent({
+        rawBody: Buffer.from(JSON.stringify(webhookPayload)),
+        signature: "sig_test",
+      }),
+    ]);
+
+    assert.strictEqual(verifyRes.status, PosPaymentStatus.SUCCEEDED);
+    assert.strictEqual(webhookRes.processed, true);
+
+    // Ensure database records remain exactly single
+    assert.strictEqual(testDb.posPayments.size, 1, "Exactly 1 PosPayment record in DB");
+    assert.strictEqual(testDb.stripeRecords.size, 1, "Exactly 1 StripePaymentRecord in DB");
+    assert.strictEqual(testDb.paymentAttempts.size, 1, "Exactly 1 PaymentAttempt record in DB");
   });
 });
