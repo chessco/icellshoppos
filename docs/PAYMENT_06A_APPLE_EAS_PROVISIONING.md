@@ -1,0 +1,257 @@
+# PAYMENT-06A — APPLE ENTITLEMENT & EAS NATIVE BUILD PROVISIONING
+## Pro Buyer / iReader POS
+## Tap to Pay on iPhone — Apple Capability, Signing & Physical Build Gate
+
+---
+
+## 1. Executive Summary
+
+**PHASE PAYMENT-06A** establishes the definitive technical bridge between the audited software architecture and real iOS physical hardware execution for **Tap to Pay on iPhone** (`STRIPE_TAP_TO_PAY_IPHONE`).
+
+This phase audits the native iOS signing chain, canonical App Identifier, Apple ProximityReader entitlement requirements, and EAS Development Build configuration (`apps/mobile/eas.json` & `apps/mobile/app.json`).
+
+### Key Audit Findings:
+1. **Source Configuration (`CONFIG_DECLARED`)**: The required entitlement `com.apple.developer.proximity-reader.payment.acceptance: true` is properly declared in [`apps/mobile/app.json`](file:///c:/PitayaCode/icellshoppos/apps/mobile/app.json) under `expo.ios.entitlements`.
+2. **Canonical Bundle Identifier**: `com.icellshop.ireaderpos` (EAS Project ID: `3ad01e07-f5a2-4a86-bc2a-6ce315a5870c`, Owner: `chesssco`).
+3. **EAS Build Architecture**: Custom Development Build profile (`developmentClient: true`, `distribution: "internal"`, `simulator: false`) is configured in [`apps/mobile/eas.json`](file:///c:/PitayaCode/icellshoppos/apps/mobile/eas.json).
+4. **Current External Blocker**: The Apple Developer Program portal capability approval for **Tap to Pay on iPhone** is currently `PENDING_USER_ACTION` / `PENDING_APPLE_APPROVAL`.
+
+---
+
+## 2. Scope
+
+| Dimension | In Scope | Out of Scope |
+| :--- | :--- | :--- |
+| **Apple Provisioning** | App Identifier capability, ProximityReader entitlement request, Provisioning Profile | Fabricating unsigned entitlements or bypassing Apple Developer portal |
+| **Native Build Config** | `eas.json` development profile, `app.json` iOS plugins/entitlements | Redesigning backend Payment Orchestrator or modifying PAYMENT-05A |
+| **Hardware Gate** | Physical iPhone XS+ native installability readiness | Gate A physical Bluetooth Stripe Reader validation |
+| **Security & Signing** | Zero secrets in client, ATS/TLS compliance, managed EAS credentials | Storing private certificates or `.p12` passwords in source code |
+
+---
+
+## 3. PAYMENT-06 Baseline
+
+- **PAYMENT-06 Status**: `PASS_WITH_OBSERVATIONS` (`docs/PAYMENT_06_PHYSICAL_PAYMENT_VALIDATION.md`).
+- **Gate A (iPad + Physical Reader)**: `READY_FOR_PHYSICAL_VALIDATION`.
+- **Gate B (iPhone Tap to Pay)**: `PENDING_MERCHANT_PROVISIONING`.
+- **Gate C (iPad $\to$ iPhone Handoff)**: `READY_FOR_PHYSICAL_VALIDATION`.
+- **Automated Validation**: `72/72` tests passing across monorepo, 0 TypeScript errors root/mobile.
+
+---
+
+## 4. Repository Inspection
+
+- [`apps/mobile/app.json`](file:///c:/PitayaCode/icellshoppos/apps/mobile/app.json):
+  - Bundle ID: `com.icellshop.ireaderpos`
+  - Name: `iReader POS`
+  - Entitlements: `com.apple.developer.proximity-reader.payment.acceptance: true`
+  - Info.plist permissions: Camera, Bluetooth, Location, Local Network.
+- [`apps/mobile/eas.json`](file:///c:/PitayaCode/icellshoppos/apps/mobile/eas.json):
+  - CLI version: `>= 14.0.0`
+  - Profile `development`: `developmentClient: true`, `distribution: "internal"`, `ios.simulator: false`.
+- [`apps/mobile/package.json`](file:///c:/PitayaCode/icellshoppos/apps/mobile/package.json):
+  - Expo `~57.0.22`, `expo-dev-client: ~57.0.19`, `react-native: 0.86.3`.
+
+---
+
+## 5. Official Apple Requirements
+
+1. **Hardware**: Physical iPhone XS, XS Max, XR, or later (iPhone 11 through 16 series supported). iPads are not supported for native Tap to Pay collection.
+2. **OS Version**: iOS 16.0 minimum (iOS 16.4+ / iOS 17+ recommended).
+3. **Apple Developer Account**: Must be an Organization account or Individual account enrolled in the Apple Developer Program.
+4. **Entitlement Identifier**: `com.apple.developer.proximity-reader.payment.acceptance`.
+5. **Approval Workflow**: Must be requested under *Certificates, Identifiers & Profiles* $\to$ *Identifiers* $\to$ *App IDs* $\to$ `com.icellshop.ireaderpos` $\to$ *Additional Capabilities* $\to$ *Tap to Pay on iPhone*.
+
+---
+
+## 6. Official Stripe Requirements
+
+1. **Stripe Mexico Compatibility**: Tap to Pay on iPhone is officially supported in Mexico for Mexican Stripe accounts processing MXN.
+2. **Stripe Terminal SDK**: Handled via Local Mobile reader discovery (`discoveryMethod: "local_mobile"`).
+3. **Stripe Location**: Mandatory registration of physical branch address in Stripe Dashboard (`Site.stripeLocationId`).
+4. **Merchant Terms**: The merchant account must accept the Apple Tap to Pay platform terms in the Stripe Dashboard.
+
+---
+
+## 7. Official Expo / EAS Requirements
+
+1. **Native Module Linking**: Expo Go **cannot** execute native ProximityReader frameworks or Stripe Terminal native bridges.
+2. **EAS Development Build**: A custom development client (`expo-dev-client`) compiled natively via EAS Build is mandatory.
+3. **Signing**: The provisioning profile generated by Apple/EAS must explicitly include the approved `com.apple.developer.proximity-reader.payment.acceptance` entitlement.
+
+---
+
+## 8. Current Mobile Stack
+
+- **Framework**: React Native 0.86.3 + Expo 57.0.22
+- **Build Client**: `expo-dev-client` 57.0.19
+- **Platform Runtime**: Hermes
+- **Monorepo Packages**: `@ireader/contracts`, `@ireader/api-client`, `@ireader/application`
+
+---
+
+## 9. iOS Architecture
+
+```
+                                  ┌────────────────────────┐
+                                  │   apps/mobile/app.json  │
+                                  │ com.icellshop.ireaderpos│
+                                  └───────────┬────────────┘
+                                              │
+                                              ▼
+                                 ┌─────────────────────────┐
+                                 │   Apple Developer Portal│
+                                 │  ProximityReader Active │
+                                 └───────────┬─────────────┘
+                                              │
+                                              ▼
+                                 ┌─────────────────────────┐
+                                 │   EAS Provisioning Profile
+                                 │ Contains Entitlement    │
+                                 └───────────┬─────────────┘
+                                              │
+                                              ▼
+                                 ┌─────────────────────────┐
+                                 │   EAS Development Build │
+                                 │  .ipa / ad-hoc install  │
+                                 └───────────┬─────────────┘
+                                              │
+                                              ▼
+                                 ┌─────────────────────────┐
+                                 │ Physical iPhone (iOS16+)│
+                                 │ Ready for Card Tap      │
+                                 └─────────────────────────┘
+```
+
+---
+
+## 10. Canonical Bundle Identifier
+
+- **BUNDLE IDENTIFIER**: `com.icellshop.ireaderpos`
+- **SOURCE**: [`apps/mobile/app.json`](file:///c:/PitayaCode/icellshoppos/apps/mobile/app.json#L13)
+- **APPLE APP IDENTIFIER EXPECTED**: `com.icellshop.ireaderpos` (Team ID + `com.icellshop.ireaderpos`)
+
+---
+
+## 11. Entitlement Source Declaration
+
+- **ENTITLEMENT**: `com.apple.developer.proximity-reader.payment.acceptance`
+- **DECLARED**: `YES`
+- **SOURCE FILE**: `apps/mobile/app.json`
+- **SOURCE VALUE**: `true` (under `expo.ios.entitlements`)
+
+---
+
+## 12. Apple Capability Status
+
+```
+[x] 1. CONFIG_DECLARED                   (Verified in app.json)
+[ ] 2. APPLE_CAPABILITY_REQUESTED       (Pending in Apple Developer Portal)
+[ ] 3. APPLE_CAPABILITY_APPROVED        (Pending Apple review)
+[ ] 4. APP_IDENTIFIER_CAPABILITY_ENABLED (Pending in Certificates, Identifiers & Profiles)
+[ ] 5. PROVISIONING_PROFILE_CONTAINS_ENTITLEMENT (Pending EAS profile sync)
+[ ] 6. SIGNED_BINARY_CONTAINS_ENTITLEMENT (Pending EAS build)
+[ ] 7. PHYSICAL_BUILD_INSTALLED          (Pending physical iPhone install)
+[ ] 8. READY_FOR_TAP_TO_PAY_PHYSICAL_VALIDATION
+```
+
+---
+
+## 13. Apple Developer Account Requirements & Manual Action
+
+To activate the entitlement for the canonical App ID `com.icellshop.ireaderpos`:
+
+1. Sign in to the [Apple Developer Account](https://developer.apple.com/account/).
+2. Navigate to **Certificates, Identifiers & Profiles** $\to$ **Identifiers**.
+3. Select the App ID matching `com.icellshop.ireaderpos` (or create it if not yet registered).
+4. Under the **Additional Capabilities** tab, check the box for **Tap to Pay on iPhone** (or **ProximityReader Payment Acceptance**).
+5. Submit the request for Apple approval if prompted by Apple's review workflow.
+
+---
+
+## 14. EAS Configuration Audit
+
+[`apps/mobile/eas.json`](file:///c:/PitayaCode/icellshoppos/apps/mobile/eas.json):
+```json
+{
+  "cli": {
+    "version": ">= 14.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      }
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "production": {
+      "autoIncrement": true
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
+```
+- **Evaluation**: Fully configured for physical iOS device development builds (`simulator: false`, `distribution: "internal"`).
+
+---
+
+## 15. Security Audit
+
+- No `STRIPE_SECRET_KEY`, webhook secret, database connection string, or private signing certificates are present in mobile code or configuration files.
+- Mobile client communicates strictly with the Pro Buyer backend over HTTPS.
+
+---
+
+## 16. Regression & Build Integrity
+
+- **Root TypeScript**: `0` errors.
+- **Mobile TypeScript**: `0` errors.
+- **Automated Payment Tests**: `72/72` PASS (`npm test`).
+- **Production Next.js Build**: `160/160` routes compiled.
+- **Windows Stack**: Untouched.
+- **Database Safety**: Zero migrations / zero schema modifications.
+
+---
+
+## 17. Current Checkpoint
+
+```
+PAYMENT-06A CHECKPOINT:
+
+CURRENT STAGE: CHECKPOINT_A (APPLE_CAPABILITY_REQUEST)
+
+APPLE CAPABILITY: PENDING_USER_ACTION
+
+BUNDLE IDENTIFIER: com.icellshop.ireaderpos
+
+APP IDENTIFIER: com.icellshop.ireaderpos
+
+SOURCE ENTITLEMENT: com.apple.developer.proximity-reader.payment.acceptance
+
+EAS STATUS: CONFIGURED (Ready for build once capability is approved)
+
+NATIVE BUILD STATUS: PENDING_APPLE_APPROVAL
+
+SIGNED ENTITLEMENT STATUS: PENDING_PROVISIONING_PROFILE
+
+PHYSICAL INSTALLATION STATUS: PENDING_NATIVE_BUILD
+
+USER ACTION REQUIRED:
+1. Log in to your Apple Developer Account (https://developer.apple.com/account/).
+2. Go to "Certificates, Identifiers & Profiles" -> "Identifiers".
+3. Select (or register) the App ID: com.icellshop.ireaderpos
+4. In the "Additional Capabilities" tab, enable "Tap to Pay on iPhone".
+5. Save changes and confirm approval from Apple.
+
+EXPECTED RESULT:
+The App ID "com.icellshop.ireaderpos" will have "Tap to Pay on iPhone" enabled in Apple's portal.
+
+AFTER COMPLETING IT:
+Confirm approval in chat to resume PAYMENT-06A and execute the EAS Development Build.
+```
