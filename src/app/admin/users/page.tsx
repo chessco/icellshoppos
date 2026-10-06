@@ -4,6 +4,39 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import AppSidebar from "@/components/AppSidebar";
 
+type Plan = {
+  id: string;
+  code: string;
+  name: string;
+  basePriceCents: number;
+  includedSeats?: number | null;
+  trialDays?: number | null;
+};
+
+type OrgDetails = {
+  id: string;
+  name: string;
+  slug: string;
+  userCount: number;
+  planId: string | null;
+  planCode: string | null;
+  planName: string | null;
+  planPriceCents: number | null;
+  subscriptionStatus: string | null;
+};
+
+type GroupedOrg = {
+  orgId: string;
+  orgName: string;
+  planName: string;
+  planCode: string;
+  planId: string | null;
+  subscriptionStatus: string;
+  users: Array<{ id: string; fullName: string | null; email: string; status: string; role: string }>;
+};
+
+type GroupedUsers = Record<string, GroupedOrg>;
+
 type UserRow = {
   id: string;
   fullName?: string | null;
@@ -17,18 +50,26 @@ type UserRow = {
     organization?: {
       id?: string | null;
       name?: string | null;
+      subscriptions?: Array<{
+        id: string;
+        status: string;
+        planId: string;
+        plan?: {
+          id: string;
+          code: string;
+          name: string;
+          basePriceCents: number;
+        } | null;
+      }>;
     } | null;
   }>;
 };
 
-type GroupedUsers = Record<
-  string,
-  Array<{ id: string; fullName: string | null; email: string; status: string; role: string }>
->;
-
 export default function AdminUsersPage() {
   const pathname = usePathname();
   const [users, setUsers] = useState<UserRow[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [organizations, setOrganizations] = useState<Record<string, OrgDetails>>({});
   const [groupedUsers, setGroupedUsers] = useState<GroupedUsers>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -46,6 +87,8 @@ export default function AdminUsersPage() {
         return;
       }
       setUsers(data.users || []);
+      setPlans(data.plans || []);
+      setOrganizations(data.organizations || {});
       setGroupedUsers(data.groupedByOrganization || {});
     } catch {
       setError("Failed to load users");
@@ -110,6 +153,38 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleSetOrgPlan = async (
+    organizationId: string,
+    planId: string,
+    subscriptionStatus: "active" | "trialing" = "active"
+  ) => {
+    try {
+      setBusyAction(`${organizationId}:plan`);
+      setFeedback(null);
+      const response = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "set-org-plan",
+          organizationId,
+          planId,
+          subscriptionStatus,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setFeedback(data.error ?? "Failed to update billing plan.");
+        return;
+      }
+      setFeedback(`Billing plan updated to ${data.plan?.name || "selected plan"}.`);
+      await loadUsers();
+    } catch {
+      setFeedback("Failed to update billing plan.");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   return (
     <div className="app-shell">
       <nav className="sticky top-0 z-30 border-b border-[#eddac7] bg-[rgba(255,250,243,0.95)] px-6 py-3 backdrop-blur">
@@ -122,36 +197,90 @@ export default function AdminUsersPage() {
         <main className="flex min-w-0 flex-col gap-8 px-6 py-10">
           <header>
             <h1 className="text-3xl font-semibold text-[#1f1a16]">All Users</h1>
-            <p className="text-sm text-[#6a4d3a]">Grouped by organization with ban/unban and membership controls.</p>
+            <p className="text-sm text-[#6a4d3a]">
+              Grouped by organization with billing plan, membership roles, and ban/unban controls.
+            </p>
           </header>
 
           {feedback && (
-            <div className="rounded-2xl border border-[#e6d6c6] bg-[#fff6ea] px-4 py-3 text-sm text-[#5c4332]">
+            <div className="rounded-2xl border border-[#e6d6c6] bg-[#fff6ea] px-4 py-3 text-sm font-medium text-[#5c4332]">
               {feedback}
             </div>
           )}
 
           <section className="rounded-2xl border border-[#e6d6c6] bg-white p-6">
-            <h2 className="mb-2 text-lg font-semibold text-[#1f1a16]">Users by Organization</h2>
+            <h2 className="mb-2 text-lg font-semibold text-[#1f1a16]">Users by Organization &amp; Billing Plan</h2>
+            <p className="mb-4 text-xs text-[#6a4d3a]">
+              Change an organization&apos;s active billing plan (Free Trial, Basic, Pro) directly.
+            </p>
             {loading ? (
               <div>Loading...</div>
             ) : error ? (
               <div className="text-red-600">{error}</div>
             ) : (
               <div className="space-y-4">
-                {Object.entries(groupedUsers).map(([organization, organizationUsers]) => (
-                  <div key={organization} className="rounded-xl border border-[#e6d6c6] p-3">
-                    <h3 className="text-sm font-semibold text-[#3b2a1e]">{organization}</h3>
-                    <div className="mt-2 text-sm text-[#6a4d3a]">{organizationUsers.length} users</div>
+                {Object.entries(groupedUsers).map(([organization, orgInfo]) => (
+                  <div
+                    key={organization}
+                    className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[#e6d6c6] bg-[#fffaf3] p-4"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-semibold text-[#3b2a1e]">
+                          {orgInfo.orgName || organization}
+                        </h3>
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                            orgInfo.planCode === "pro"
+                              ? "border border-emerald-300 bg-emerald-100 text-emerald-800"
+                              : orgInfo.planCode === "basic"
+                              ? "border border-blue-300 bg-blue-100 text-blue-800"
+                              : "border border-amber-300 bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {orgInfo.planName || "Free Trial"} ({orgInfo.subscriptionStatus || "active"})
+                        </span>
+                      </div>
+                      <div className="mt-1 text-xs text-[#6a4d3a]">
+                        {orgInfo.users.length} {orgInfo.users.length === 1 ? "user" : "users"}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-medium text-[#5c4332]">Billing Plan:</label>
+                      <select
+                        value={
+                          orgInfo.planId ||
+                          plans.find((p) => p.code === orgInfo.planCode)?.id ||
+                          ""
+                        }
+                        onChange={(event) =>
+                          void handleSetOrgPlan(orgInfo.orgId, event.target.value, "active")
+                        }
+                        disabled={busyAction === `${orgInfo.orgId}:plan`}
+                        className="rounded-lg border border-[#d9c4b0] bg-white px-3 py-1.5 text-xs font-medium text-[#3b2a1e] shadow-sm hover:border-[#b89f8a] focus:outline-none focus:ring-2 focus:ring-[#8c674b] disabled:opacity-50"
+                      >
+                        <option value="" disabled>
+                          Select plan...
+                        </option>
+                        {plans.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} {p.basePriceCents ? `($${(p.basePriceCents / 100).toFixed(2)}/mo)` : "(Free)"}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 ))}
-                {Object.keys(groupedUsers).length === 0 && <div className="text-[#6a4d3a]">No organizations found.</div>}
+                {Object.keys(groupedUsers).length === 0 && (
+                  <div className="text-[#6a4d3a]">No organizations found.</div>
+                )}
               </div>
             )}
           </section>
 
           <section className="rounded-2xl border border-[#e6d6c6] bg-white p-6">
-            <h2 className="text-lg font-semibold text-[#1f1a16] mb-2">Users</h2>
+            <h2 className="mb-2 text-lg font-semibold text-[#1f1a16]">Users</h2>
             {loading ? (
               <div>Loading...</div>
             ) : error ? (
@@ -165,7 +294,7 @@ export default function AdminUsersPage() {
                       <th className="px-3 py-2 text-left">Email</th>
                       <th className="px-3 py-2 text-left">Role</th>
                       <th className="px-3 py-2 text-left">Status</th>
-                      <th className="px-3 py-2 text-left">Orgs</th>
+                      <th className="px-3 py-2 text-left">Orgs &amp; Plan</th>
                       <th className="px-3 py-2 text-left">Membership</th>
                       <th className="px-3 py-2 text-left">Created</th>
                       <th className="px-3 py-2 text-left">Actions</th>
@@ -174,11 +303,54 @@ export default function AdminUsersPage() {
                   <tbody>
                     {users.map((user) => (
                       <tr key={user.id} className="border-b border-[#e6d6c6]">
-                        <td className="px-3 py-2">{user.fullName}</td>
-                        <td className="px-3 py-2">{user.email}</td>
+                        <td className="px-3 py-2 font-medium text-[#1f1a16]">{user.fullName || "-"}</td>
+                        <td className="px-3 py-2 text-[#3b2a1e]">{user.email}</td>
                         <td className="px-3 py-2">{user.role || user.memberships?.[0]?.role || "-"}</td>
-                        <td className="px-3 py-2">{user.status}</td>
-                        <td className="px-3 py-2">{user.memberships?.map((m) => m.organization?.name).join(", ")}</td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                              user.status === "active"
+                                ? "bg-green-100 text-green-800"
+                                : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {user.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-col gap-1.5">
+                            {user.memberships?.map((m) => {
+                              const orgId = m.organization?.id;
+                              const orgData = orgId ? organizations[orgId] : null;
+                              const planName =
+                                orgData?.planName ||
+                                m.organization?.subscriptions?.[0]?.plan?.name ||
+                                "Free Trial";
+                              const planCode =
+                                orgData?.planCode ||
+                                m.organization?.subscriptions?.[0]?.plan?.code ||
+                                "free";
+                              return (
+                                <div key={m.id} className="flex items-center gap-1.5 text-xs">
+                                  <span className="font-medium text-[#3b2a1e]">
+                                    {m.organization?.name || "Unknown"}
+                                  </span>
+                                  <span
+                                    className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                                      planCode === "pro"
+                                        ? "bg-emerald-100 text-emerald-800"
+                                        : planCode === "basic"
+                                        ? "bg-blue-100 text-blue-800"
+                                        : "bg-amber-100 text-amber-800"
+                                    }`}
+                                  >
+                                    {planName}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </td>
                         <td className="px-3 py-2">
                           <div className="flex flex-col gap-2">
                             {(user.memberships ?? []).map((membership) => (
@@ -203,11 +375,13 @@ export default function AdminUsersPage() {
                             ))}
                           </div>
                         </td>
-                        <td className="px-3 py-2">{user.createdAt ? new Date(user.createdAt).toLocaleDateString() : "-"}</td>
+                        <td className="px-3 py-2 text-xs text-[#6a4d3a]">
+                          {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : "-"}
+                        </td>
                         <td className="px-3 py-2">
                           {user.status === "inactive" ? (
                             <button
-                              className="mr-2 rounded-full bg-[#1f1a16] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                              className="mr-2 rounded-full bg-[#1f1a16] px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
                               onClick={() => void handleSetStatus(user, "active")}
                               disabled={busyAction === `${user.id}:status`}
                             >
@@ -215,7 +389,7 @@ export default function AdminUsersPage() {
                             </button>
                           ) : (
                             <button
-                              className="mr-2 rounded-full border border-[#c24d34] px-4 py-2 text-sm font-semibold text-[#c24d34] disabled:opacity-60"
+                              className="mr-2 rounded-full border border-[#c24d34] px-4 py-1.5 text-xs font-semibold text-[#c24d34] disabled:opacity-60"
                               onClick={() => void handleSetStatus(user, "inactive")}
                               disabled={busyAction === `${user.id}:status`}
                             >
@@ -227,7 +401,7 @@ export default function AdminUsersPage() {
                     ))}
                   </tbody>
                 </table>
-                {users.length === 0 && <div className="text-[#6a4d3a] mt-4">No users found.</div>}
+                {users.length === 0 && <div className="mt-4 text-[#6a4d3a]">No users found.</div>}
               </div>
             )}
           </section>
@@ -236,4 +410,5 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+
 
