@@ -15,11 +15,32 @@ export default function IntegrationsPage() {
     pitayacore_webhook_secret: "",
     flow_api_url: "https://flow-api.pitayacode.io",
     flow_internal_key: "",
+    stripe_mode: "live",
+    stripe_secret_key: "",
+    stripe_publishable_key: "",
+    stripe_webhook_secret: "",
+    stripe_location_id: "",
+    stripe_account_id: "",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [showStripeSecret, setShowStripeSecret] = useState(false);
+  const [showStripeWebhook, setShowStripeWebhook] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Stripe Connection Test State
+  const [testingStripe, setTestingStripe] = useState(false);
+  const [stripeTestResult, setStripeTestResult] = useState<{
+    success: boolean;
+    connected: boolean;
+    message?: string;
+    error?: string;
+    businessName?: string;
+    primaryCurrency?: string;
+    livemode?: boolean;
+    accountId?: string;
+  } | null>(null);
 
   useEffect(() => {
     fetchSettings();
@@ -41,8 +62,8 @@ export default function IntegrationsPage() {
     }
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setSaving(true);
     setSaveSuccess(false);
 
@@ -67,16 +88,51 @@ export default function IntegrationsPage() {
     }
   };
 
+  const handleTestStripe = async () => {
+    setTestingStripe(true);
+    setStripeTestResult(null);
+
+    try {
+      const res = await fetch("/api/settings/integrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "test_stripe",
+          stripe_secret_key: settings.stripe_secret_key,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setStripeTestResult(data);
+      } else {
+        setStripeTestResult({
+          success: false,
+          connected: false,
+          error: data.error || "No se pudo conectar con Stripe API.",
+        });
+      }
+    } catch (err) {
+      setStripeTestResult({
+        success: false,
+        connected: false,
+        error: "Error de red al conectar con Stripe API.",
+      });
+    } finally {
+      setTestingStripe(false);
+    }
+  };
+
   return (
     <div className="app-shell">
-      {/* Top Navbar with CurrentOrgBadge & Luxury Header Actions */}
+      {/* Top Navbar with CurrentOrgBadge */}
       <nav className="sticky top-0 z-30 border-b border-[#d6e4ff] bg-[rgba(244,248,255,0.95)] px-4 py-3 backdrop-blur md:px-6">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 text-sm text-[#0f1f3d]">
           <div className="flex items-center gap-3">
             <CurrentOrgBadge />
-            <span className="h-4 w-px bg-slate-300 hidden md:block" />
-            <span className="font-semibold text-xs uppercase tracking-widest text-slate-500 hidden md:block">
-              Ajustes & Integraciones
+            <span className="hidden h-4 w-px bg-slate-300 md:block" />
+            <span className="hidden text-xs font-semibold uppercase tracking-widest text-slate-500 md:block">
+              Ajustes &amp; Integraciones
             </span>
           </div>
         </div>
@@ -86,40 +142,271 @@ export default function IntegrationsPage() {
       <div className="grid w-full md:grid-cols-[190px_minmax(0,1fr)]">
         <AppSidebar pathname="/settings/integrations" />
 
-        <main className="min-w-0 p-6 md:p-10 max-w-5xl">
+        <main className="max-w-5xl min-w-0 p-6 md:p-10">
           {loading ? (
-            <div className="flex flex-col items-center justify-center p-20 gap-3">
-              <div className="size-10 rounded-full border-3 border-[#2563eb] border-t-transparent animate-spin" />
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Cargando integraciones...</p>
+            <div className="flex flex-col items-center justify-center gap-3 p-20">
+              <div className="size-10 animate-spin rounded-full border-3 border-[#2563eb] border-t-transparent" />
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Cargando integraciones...</p>
             </div>
           ) : (
             <div className="flex flex-col gap-8">
               {/* Header Title & Subtitle */}
               <div>
-                <h1 className="text-[#0f1f3d] text-3xl md:text-4xl font-black tracking-tight font-display">
+                <h1 className="font-display text-3xl font-black tracking-tight text-[#0f1f3d] md:text-4xl">
                   Integraciones
                 </h1>
-                <p className="text-slate-500 text-sm font-medium mt-2">
-                  Conecte el sistema POS con herramientas y pasarelas externas para potenciar su flujo de trabajo.
+                <p className="mt-2 text-sm font-medium text-slate-500">
+                  Conecte el sistema POS con pasarelas de pago (Stripe, Tap to Pay) y herramientas externas.
                 </p>
               </div>
 
-              {/* Integration Card: WHATSAPP BOT */}
-              <div className="group relative overflow-hidden p-8 md:p-10 rounded-[36px] bg-white border border-[#c7dcff] shadow-sm">
-                {/* Top Right Floating Bot Icon */}
+              {/* INTEGRATION CARD: STRIPE PAYMENTS & TAP TO PAY */}
+              <div className="group relative overflow-hidden rounded-[36px] border border-[#c7dcff] bg-white p-8 shadow-sm md:p-10">
                 <div className="absolute top-8 right-8 hidden sm:flex">
-                  <div className="size-16 rounded-3xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-sm">
-                    <svg className="w-8 h-8 fill-current" viewBox="0 0 24 24">
+                  <div className="size-16 flex items-center justify-center rounded-3xl border border-indigo-100 bg-indigo-50 text-[#635BFF] shadow-sm">
+                    <svg className="size-8 fill-current" viewBox="0 0 24 24">
+                      <path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.591-7.305z" />
+                    </svg>
+                  </div>
+                </div>
+
+                <div className="w-full max-w-3xl">
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-2xl font-black uppercase tracking-wider text-[#0f1f3d]">
+                      Stripe &amp; Tap to Pay
+                    </h2>
+                    <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-indigo-700">
+                      Pasarela Oficial
+                    </span>
+                  </div>
+                  <p className="mt-2 mb-6 text-sm font-medium leading-relaxed text-slate-600">
+                    Configure las credenciales de la API de Stripe para habilitar cobros con tarjeta en el POS, Terminales inteligentes (BBPOS / WisePOS) y Tap to Pay en iPhone / iPad.
+                  </p>
+
+                  <form onSubmit={handleSave} className="space-y-6">
+                    {/* Modo Selector */}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                        Entorno de Operación
+                      </label>
+                      <div className="grid max-w-md grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setSettings((s) => ({ ...s, stripe_mode: "live" }))}
+                          className={`rounded-2xl border-2 py-3 px-4 text-xs font-black uppercase tracking-wider transition-all ${
+                            settings.stripe_mode === "live"
+                              ? "border-emerald-600 bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
+                              : "border-[#d6e4ff] bg-[#f8fbff] text-slate-600 hover:border-emerald-400 hover:text-[#0f1f3d]"
+                          }`}
+                        >
+                          🟢 Producción (Live)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSettings((s) => ({ ...s, stripe_mode: "test" }))}
+                          className={`rounded-2xl border-2 py-3 px-4 text-xs font-black uppercase tracking-wider transition-all ${
+                            settings.stripe_mode === "test"
+                              ? "border-amber-600 bg-amber-600 text-white shadow-md shadow-amber-600/20"
+                              : "border-[#d6e4ff] bg-[#f8fbff] text-slate-600 hover:border-amber-400 hover:text-[#0f1f3d]"
+                          }`}
+                        >
+                          🟡 Pruebas (Test Mode)
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Stripe Secret Key */}
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                        Stripe Secret Key ({settings.stripe_mode === "live" ? "sk_live_..." : "sk_test_..."})
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showStripeSecret ? "text" : "password"}
+                          value={settings.stripe_secret_key || ""}
+                          onChange={(e) => setSettings({ ...settings, stripe_secret_key: e.target.value })}
+                          placeholder={settings.stripe_mode === "live" ? "sk_live_51..." : "sk_test_51..."}
+                          className="w-full rounded-2xl border border-[#c7dcff] bg-[#f8fbff] px-5 py-3.5 pr-12 font-mono text-xs text-[#0f1f3d] outline-none transition-all focus:border-indigo-600"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowStripeSecret(!showStripeSecret)}
+                          className="absolute top-1/2 right-4 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          title="Mostrar / Ocultar Clave"
+                        >
+                          <svg className="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                          </svg>
+                        </button>
+                      </div>
+                      <p className="px-1 text-[10px] text-slate-400">
+                        Utilizada exclusivamente en el servidor seguro para autenticar cobros e intents.
+                      </p>
+                    </div>
+
+                    {/* Stripe Publishable Key */}
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                        Stripe Publishable Key ({settings.stripe_mode === "live" ? "pk_live_..." : "pk_test_..."})
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.stripe_publishable_key || ""}
+                        onChange={(e) => setSettings({ ...settings, stripe_publishable_key: e.target.value })}
+                        placeholder={settings.stripe_mode === "live" ? "pk_live_51..." : "pk_test_51..."}
+                        className="w-full rounded-2xl border border-[#c7dcff] bg-[#f8fbff] px-5 py-3.5 font-mono text-xs text-[#0f1f3d] outline-none transition-all focus:border-indigo-600"
+                      />
+                      <p className="px-1 text-[10px] text-slate-400">
+                        Clave pública para inicializar el SDK del Terminal y lectores móviles.
+                      </p>
+                    </div>
+
+                    {/* Stripe Webhook Secret */}
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                        Stripe Webhook Signing Secret (whsec_...)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showStripeWebhook ? "text" : "password"}
+                          value={settings.stripe_webhook_secret || ""}
+                          onChange={(e) => setSettings({ ...settings, stripe_webhook_secret: e.target.value })}
+                          placeholder="whsec_..."
+                          className="w-full rounded-2xl border border-[#c7dcff] bg-[#f8fbff] px-5 py-3.5 pr-12 font-mono text-xs text-[#0f1f3d] outline-none transition-all focus:border-indigo-600"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowStripeWebhook(!showStripeWebhook)}
+                          className="absolute top-1/2 right-4 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          title="Mostrar / Ocultar Clave"
+                        >
+                          <svg className="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                          </svg>
+                        </button>
+                      </div>
+                      <p className="px-1 text-[10px] text-slate-400">
+                        Endpoint webhook: <code className="text-[#2563eb]">https://probuyer.pitayacode.io/api/payments/stripe/webhook</code>
+                      </p>
+                    </div>
+
+                    {/* Stripe Terminal Location ID */}
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                        Stripe Terminal Location ID (Opcional - tml_...)
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.stripe_location_id || ""}
+                        onChange={(e) => setSettings({ ...settings, stripe_location_id: e.target.value })}
+                        placeholder="tml_..."
+                        className="w-full rounded-2xl border border-[#c7dcff] bg-[#f8fbff] px-5 py-3.5 font-mono text-xs text-[#0f1f3d] outline-none transition-all focus:border-indigo-600"
+                      />
+                      <p className="px-1 text-[10px] text-slate-400">
+                        Ubicación creada en el Dashboard de Stripe para agrupar lectores físicos y Tap to Pay.
+                      </p>
+                    </div>
+
+                    {/* Test Results Display */}
+                    {stripeTestResult && (
+                      <div
+                        className={`rounded-2xl border p-4 text-xs font-semibold ${
+                          stripeTestResult.success
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                            : "border-rose-300 bg-rose-50 text-rose-800"
+                        }`}
+                      >
+                        {stripeTestResult.success ? (
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2 font-bold text-emerald-900">
+                              <svg className="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                              </svg>
+                              <span>{stripeTestResult.message}</span>
+                            </div>
+                            <div className="mt-1 text-[11px] text-emerald-700">
+                              Comercio: <strong>{stripeTestResult.businessName}</strong> | Moneda: <strong>{stripeTestResult.primaryCurrency}</strong> | ID: {stripeTestResult.accountId}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <svg className="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            <span>{stripeTestResult.error}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Action Buttons: Save & Test */}
+                    <div className="mt-8 flex flex-wrap items-center gap-4 border-t border-[#e8f0ff] pt-6">
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        className="flex items-center gap-2.5 rounded-2xl bg-[#0f1f3d] px-8 py-3.5 text-xs font-black uppercase tracking-wider text-white shadow-md transition-all hover:bg-[#1d4ed8] active:scale-95 disabled:opacity-50"
+                      >
+                        {saving ? (
+                          <>
+                            <div className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                            <span>Guardando...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Guardar Configuración Stripe</span>
+                            <svg className="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                            </svg>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleTestStripe}
+                        disabled={testingStripe || !settings.stripe_secret_key}
+                        className="flex items-center gap-2 rounded-2xl border-2 border-indigo-300 bg-indigo-50 px-5 py-3 text-xs font-black uppercase tracking-wider text-indigo-700 shadow-sm transition-all hover:bg-indigo-100 hover:border-indigo-400 active:scale-95 disabled:opacity-50"
+                      >
+                        {testingStripe ? (
+                          <>
+                            <div className="size-3.5 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+                            <span>Verificando con Stripe API...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>⚡ Probar Conexión Stripe</span>
+                          </>
+                        )}
+                      </button>
+
+                      {saveSuccess && (
+                        <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 animate-in fade-in">
+                          <svg className="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                          </svg>
+                          ¡Configuraciones guardadas!
+                        </span>
+                      )}
+                    </div>
+                  </form>
+                </div>
+              </div>
+
+              {/* INTEGRATION CARD: WHATSAPP BOT */}
+              <div className="group relative overflow-hidden rounded-[36px] border border-[#c7dcff] bg-white p-8 shadow-sm md:p-10">
+                <div className="absolute top-8 right-8 hidden sm:flex">
+                  <div className="size-16 flex items-center justify-center rounded-3xl border border-indigo-100 bg-indigo-50 text-indigo-600 shadow-sm">
+                    <svg className="size-8 fill-current" viewBox="0 0 24 24">
                       <path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z" />
                     </svg>
                   </div>
                 </div>
 
-                <div className="max-w-2xl w-full">
-                  <h2 className="text-2xl font-black uppercase tracking-wider text-[#0f1f3d] mb-2">
+                <div className="w-full max-w-2xl">
+                  <h2 className="mb-2 text-2xl font-black uppercase tracking-wider text-[#0f1f3d]">
                     WhatsApp Bot
                   </h2>
-                  <p className="text-slate-600 text-sm font-medium mb-8 leading-relaxed">
+                  <p className="mb-8 text-sm font-medium leading-relaxed text-slate-600">
                     Automatice las notificaciones de ventas, turnos y recordatorios al WhatsApp de sus clientes seleccionando entre la integración oficial o una API externa basada en una librería JS.
                   </p>
 
@@ -129,13 +416,13 @@ export default function IntegrationsPage() {
                       <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
                         Proveedor de WhatsApp Activo
                       </label>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                         <button
                           type="button"
                           onClick={() => setSettings((s) => ({ ...s, whatsapp_provider: "FLOW" }))}
-                          className={`py-3.5 px-4 rounded-2xl text-xs font-black uppercase tracking-wider border-2 transition-all ${
+                          className={`rounded-2xl border-2 py-3.5 px-4 text-xs font-black uppercase tracking-wider transition-all ${
                             settings.whatsapp_provider === "FLOW"
-                              ? "bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/20"
+                              ? "border-indigo-600 bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
                               : "border-[#d6e4ff] bg-[#f8fbff] text-slate-600 hover:border-indigo-400 hover:text-[#0f1f3d]"
                           }`}
                         >
@@ -145,9 +432,9 @@ export default function IntegrationsPage() {
                         <button
                           type="button"
                           onClick={() => setSettings((s) => ({ ...s, whatsapp_provider: "PITAYACORE" }))}
-                          className={`py-3.5 px-4 rounded-2xl text-xs font-black uppercase tracking-wider border-2 transition-all ${
+                          className={`rounded-2xl border-2 py-3.5 px-4 text-xs font-black uppercase tracking-wider transition-all ${
                             settings.whatsapp_provider === "PITAYACORE"
-                              ? "bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/20"
+                              ? "border-indigo-600 bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
                               : "border-[#d6e4ff] bg-[#f8fbff] text-slate-600 hover:border-indigo-400 hover:text-[#0f1f3d]"
                           }`}
                         >
@@ -157,9 +444,9 @@ export default function IntegrationsPage() {
                         <button
                           type="button"
                           onClick={() => setSettings((s) => ({ ...s, whatsapp_provider: "LINKS" }))}
-                          className={`py-3.5 px-4 rounded-2xl text-xs font-black uppercase tracking-wider border-2 transition-all ${
+                          className={`rounded-2xl border-2 py-3.5 px-4 text-xs font-black uppercase tracking-wider transition-all ${
                             settings.whatsapp_provider === "LINKS"
-                              ? "bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-600/20"
+                              ? "border-emerald-600 bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
                               : "border-[#d6e4ff] bg-[#f8fbff] text-slate-600 hover:border-emerald-400 hover:text-[#0f1f3d]"
                           }`}
                         >
@@ -180,7 +467,7 @@ export default function IntegrationsPage() {
                             value={settings.pitayacore_api_url || ""}
                             onChange={(e) => setSettings({ ...settings, pitayacore_api_url: e.target.value })}
                             placeholder="https://pitayacore-api.pitayacode.io/api"
-                            className="w-full bg-[#f8fbff] border border-[#c7dcff] rounded-2xl px-5 py-3.5 text-xs text-[#0f1f3d] font-mono outline-none focus:border-indigo-600 transition-all"
+                            className="w-full rounded-2xl border border-[#c7dcff] bg-[#f8fbff] px-5 py-3.5 font-mono text-xs text-[#0f1f3d] outline-none transition-all focus:border-indigo-600"
                           />
                         </div>
 
@@ -194,15 +481,15 @@ export default function IntegrationsPage() {
                               value={settings.pitayacore_api_key || ""}
                               onChange={(e) => setSettings({ ...settings, pitayacore_api_key: e.target.value })}
                               placeholder="••••••••••••••••••••••••"
-                              className="w-full bg-[#f8fbff] border border-[#c7dcff] rounded-2xl px-5 py-3.5 pr-12 text-xs text-[#0f1f3d] font-mono outline-none focus:border-indigo-600 transition-all"
+                              className="w-full rounded-2xl border border-[#c7dcff] bg-[#f8fbff] px-5 py-3.5 pr-12 font-mono text-xs text-[#0f1f3d] outline-none transition-all focus:border-indigo-600"
                             />
                             <button
                               type="button"
                               onClick={() => setShowApiKey(!showApiKey)}
-                              className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                              className="absolute top-1/2 right-4 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                               title="Mostrar / Ocultar Token"
                             >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                               </svg>
                             </button>
@@ -218,13 +505,13 @@ export default function IntegrationsPage() {
                             value={settings.pitayacore_tenant_id || ""}
                             onChange={(e) => setSettings({ ...settings, pitayacore_tenant_id: e.target.value })}
                             placeholder="ej. 87e0dd95-fd29-4e63-a219-18478c58e4c8"
-                            className="w-full bg-[#f8fbff] border border-[#c7dcff] rounded-2xl px-5 py-3.5 text-xs text-[#0f1f3d] font-mono outline-none focus:border-indigo-600 transition-all"
+                            className="w-full rounded-2xl border border-[#c7dcff] bg-[#f8fbff] px-5 py-3.5 font-mono text-xs text-[#0f1f3d] outline-none transition-all focus:border-indigo-600"
                           />
                         </div>
 
                         {/* Separador de sección — Autorizaciones */}
                         <div className="border-t border-[#e8f0ff] pt-4">
-                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500 mb-4">
+                          <p className="mb-4 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500">
                             🔐 Autorizaciones de Descuentos
                           </p>
 
@@ -238,9 +525,9 @@ export default function IntegrationsPage() {
                                 value={settings.pitayacore_agent_slug || ""}
                                 onChange={(e) => setSettings({ ...settings, pitayacore_agent_slug: e.target.value })}
                                 placeholder="icellshop-autorizaciones"
-                                className="w-full bg-[#f8fbff] border border-[#c7dcff] rounded-2xl px-5 py-3.5 text-xs text-[#0f1f3d] font-mono outline-none focus:border-indigo-600 transition-all"
+                                className="w-full rounded-2xl border border-[#c7dcff] bg-[#f8fbff] px-5 py-3.5 font-mono text-xs text-[#0f1f3d] outline-none transition-all focus:border-indigo-600"
                               />
-                              <p className="text-[10px] text-slate-400 px-1">
+                              <p className="px-1 text-[10px] text-slate-400">
                                 Slug del agente coordinador de autorizaciones en PitayaCore.
                               </p>
                             </div>
@@ -254,9 +541,9 @@ export default function IntegrationsPage() {
                                 value={settings.pitayacore_authorizer_phone || ""}
                                 onChange={(e) => setSettings({ ...settings, pitayacore_authorizer_phone: e.target.value })}
                                 placeholder="5212223334455"
-                                className="w-full bg-[#f8fbff] border border-[#c7dcff] rounded-2xl px-5 py-3.5 text-xs text-[#0f1f3d] font-mono outline-none focus:border-indigo-600 transition-all"
+                                className="w-full rounded-2xl border border-[#c7dcff] bg-[#f8fbff] px-5 py-3.5 font-mono text-xs text-[#0f1f3d] outline-none transition-all focus:border-indigo-600"
                               />
-                              <p className="text-[10px] text-slate-400 px-1">
+                              <p className="px-1 text-[10px] text-slate-400">
                                 Número WhatsApp del autorizador que recibirá las solicitudes de descuento (con código de país, sin +).
                               </p>
                             </div>
@@ -270,9 +557,9 @@ export default function IntegrationsPage() {
                                 value={settings.pitayacore_webhook_secret || ""}
                                 onChange={(e) => setSettings({ ...settings, pitayacore_webhook_secret: e.target.value })}
                                 placeholder="••••••••••••••••••••"
-                                className="w-full bg-[#f8fbff] border border-[#c7dcff] rounded-2xl px-5 py-3.5 text-xs text-[#0f1f3d] font-mono outline-none focus:border-indigo-600 transition-all"
+                                className="w-full rounded-2xl border border-[#c7dcff] bg-[#f8fbff] px-5 py-3.5 font-mono text-xs text-[#0f1f3d] outline-none transition-all focus:border-indigo-600"
                               />
-                              <p className="text-[10px] text-slate-400 px-1">
+                              <p className="px-1 text-[10px] text-slate-400">
                                 Secret compartido con PitayaCore para verificar autenticidad de los webhooks de autorización. Configura el mismo valor en PitayaCore.
                               </p>
                             </div>
@@ -293,7 +580,7 @@ export default function IntegrationsPage() {
                             value={settings.flow_api_url || ""}
                             onChange={(e) => setSettings({ ...settings, flow_api_url: e.target.value })}
                             placeholder="https://flow-api.pitayacode.io"
-                            className="w-full bg-[#f8fbff] border border-[#c7dcff] rounded-2xl px-5 py-3.5 text-xs text-[#0f1f3d] font-mono outline-none focus:border-indigo-600 transition-all"
+                            className="w-full rounded-2xl border border-[#c7dcff] bg-[#f8fbff] px-5 py-3.5 font-mono text-xs text-[#0f1f3d] outline-none transition-all focus:border-indigo-600"
                           />
                         </div>
 
@@ -306,7 +593,7 @@ export default function IntegrationsPage() {
                             value={settings.flow_internal_key || ""}
                             onChange={(e) => setSettings({ ...settings, flow_internal_key: e.target.value })}
                             placeholder="••••••••••••••••"
-                            className="w-full bg-[#f8fbff] border border-[#c7dcff] rounded-2xl px-5 py-3.5 text-xs text-[#0f1f3d] font-mono outline-none focus:border-indigo-600 transition-all"
+                            className="w-full rounded-2xl border border-[#c7dcff] bg-[#f8fbff] px-5 py-3.5 font-mono text-xs text-[#0f1f3d] outline-none transition-all focus:border-indigo-600"
                           />
                         </div>
                       </div>
@@ -314,10 +601,10 @@ export default function IntegrationsPage() {
 
                     {/* PROVIDER: LINKS INFO */}
                     {settings.whatsapp_provider === "LINKS" && (
-                      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-50/50 p-6 flex flex-col gap-4">
+                      <div className="flex flex-col gap-4 rounded-2xl border border-emerald-500/30 bg-emerald-50/50 p-6">
                         <div className="flex items-center gap-3">
-                          <div className="size-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div className="size-10 flex items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+                            <svg className="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                             </svg>
                           </div>
@@ -325,20 +612,20 @@ export default function IntegrationsPage() {
                             <p className="text-sm font-black text-[#0f1f3d]">
                               WhatsApp Web — Sin configuración requerida
                             </p>
-                            <p className="text-xs text-slate-500 font-medium">
+                            <p className="text-xs font-medium text-slate-500">
                               No necesita servidor ni credenciales API. Los mensajes se abren directamente mediante enlaces wa.me.
                             </p>
                           </div>
                         </div>
 
-                        <ul className="space-y-2 text-xs text-slate-700 border-t border-emerald-200/50 pt-3">
+                        <ul className="space-y-2 border-t border-emerald-200/50 pt-3 text-xs text-slate-700">
                           <li className="flex items-center gap-2">
                             <span className="size-1.5 rounded-full bg-emerald-600" />
-                            <span><strong>Botón "WA App":</strong> Abre WhatsApp nativo en computadoras y tabletas.</span>
+                            <span><strong>Botón &quot;WA App&quot;:</strong> Abre WhatsApp nativo en computadoras y tabletas.</span>
                           </li>
                           <li className="flex items-center gap-2">
                             <span className="size-1.5 rounded-full bg-emerald-600" />
-                            <span><strong>Botón "WA Web":</strong> Abre web.whatsapp.com en una pestaña nueva.</span>
+                            <span><strong>Botón &quot;WA Web&quot;:</strong> Abre web.whatsapp.com en una pestaña nueva.</span>
                           </li>
                           <li className="flex items-center gap-2">
                             <span className="size-1.5 rounded-full bg-emerald-600" />
@@ -349,21 +636,21 @@ export default function IntegrationsPage() {
                     )}
 
                     {/* Bottom Save Button & Status Badge */}
-                    <div className="mt-8 pt-4 flex flex-wrap items-center gap-4">
+                    <div className="mt-8 flex flex-wrap items-center gap-4 pt-4">
                       <button
                         type="submit"
                         disabled={saving}
-                        className="px-8 py-3.5 rounded-2xl bg-[#0f1f3d] hover:bg-[#1d4ed8] text-white font-black uppercase tracking-wider text-xs flex items-center gap-2.5 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                        className="flex items-center gap-2.5 rounded-2xl bg-[#0f1f3d] px-8 py-3.5 text-xs font-black uppercase tracking-wider text-white shadow-md transition-all hover:bg-[#1d4ed8] active:scale-95 disabled:opacity-50"
                       >
                         {saving ? (
                           <>
-                            <div className="size-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                            <div className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                             <span>Guardando...</span>
                           </>
                         ) : (
                           <>
-                            <span>Guardar Cambios</span>
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <span>Guardar Configuración WhatsApp</span>
+                            <svg className="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
                             </svg>
                           </>
@@ -371,16 +658,16 @@ export default function IntegrationsPage() {
                       </button>
 
                       {/* Active Status Badge */}
-                      <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700">
-                        <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-emerald-700">
+                        <span className="size-2 animate-pulse rounded-full bg-emerald-500" />
                         <span className="text-[10px] font-black uppercase tracking-wider">
                           Servicio Activo
                         </span>
                       </div>
 
                       {saveSuccess && (
-                        <span className="text-xs font-bold text-emerald-600 flex items-center gap-1.5 animate-in fade-in">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 animate-in fade-in">
+                          <svg className="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                           </svg>
                           ¡Configuraciones guardadas!
@@ -401,12 +688,12 @@ export default function IntegrationsPage() {
                   </div>
                   <div>
                     <h3 className="text-sm font-black uppercase tracking-wider text-[#0f1f3d]">
-                      Shopify & Webshop Sync
+                      Shopify &amp; Webshop Sync
                     </h3>
                     <p className="text-xs font-medium text-slate-500">Próximamente</p>
                   </div>
                 </div>
-                <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="size-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
               </div>
@@ -417,3 +704,4 @@ export default function IntegrationsPage() {
     </div>
   );
 }
+
