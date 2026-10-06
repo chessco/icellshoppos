@@ -156,7 +156,7 @@ export default function AdminUsersPage() {
   const handleSetOrgPlan = async (
     organizationId: string,
     planId: string,
-    subscriptionStatus: "active" | "trialing" = "active"
+    subscriptionStatus: "active" | "trialing" | "past_due" | "canceled" | "unpaid" = "active"
   ) => {
     try {
       setBusyAction(`${organizationId}:plan`);
@@ -173,13 +173,13 @@ export default function AdminUsersPage() {
       });
       const data = await response.json();
       if (!response.ok) {
-        setFeedback(data.error ?? "Failed to update billing plan.");
+        setFeedback(data.error ?? "Error al actualizar el plan.");
         return;
       }
-      setFeedback(`Billing plan updated to ${data.plan?.name || "selected plan"}.`);
+      setFeedback(`Plan actualizado a ${data.plan?.name || "seleccionado"} (${subscriptionStatus}).`);
       await loadUsers();
     } catch {
-      setFeedback("Failed to update billing plan.");
+      setFeedback("Error al actualizar el plan.");
     } finally {
       setBusyAction(null);
     }
@@ -198,80 +198,112 @@ export default function AdminUsersPage() {
           <header>
             <h1 className="text-3xl font-semibold text-[#1f1a16]">All Users</h1>
             <p className="text-sm text-[#6a4d3a]">
-              Grouped by organization with billing plan, membership roles, and ban/unban controls.
+              Grouped by organization with billing plan, status, membership roles, and ban/unban controls.
             </p>
           </header>
 
           {feedback && (
-            <div className="rounded-2xl border border-[#e6d6c6] bg-[#fff6ea] px-4 py-3 text-sm font-medium text-[#5c4332]">
-              {feedback}
+            <div className="rounded-2xl border border-[#22c55e] bg-[#f0fdf4] px-4 py-3 text-sm font-semibold text-[#15803d] shadow-sm animate-in fade-in duration-200">
+              ✓ {feedback}
             </div>
           )}
 
           <section className="rounded-2xl border border-[#e6d6c6] bg-white p-6">
             <h2 className="mb-2 text-lg font-semibold text-[#1f1a16]">Users by Organization &amp; Billing Plan</h2>
             <p className="mb-4 text-xs text-[#6a4d3a]">
-              Change an organization&apos;s active billing plan (Free Trial, Basic, Pro) directly.
+              Cambia el plan (Free Trial, Basic, Pro) y el estado de suscripción directamente desde aquí.
             </p>
             {loading ? (
-              <div>Loading...</div>
+              <div className="py-4 text-sm text-[#6a4d3a]">Cargando organizaciones...</div>
             ) : error ? (
               <div className="text-red-600">{error}</div>
             ) : (
               <div className="space-y-4">
-                {Object.entries(groupedUsers).map(([organization, orgInfo]) => (
-                  <div
-                    key={organization}
-                    className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[#e6d6c6] bg-[#fffaf3] p-4"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-base font-semibold text-[#3b2a1e]">
-                          {orgInfo.orgName || organization}
-                        </h3>
-                        <span
-                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                            orgInfo.planCode === "pro"
-                              ? "border border-emerald-300 bg-emerald-100 text-emerald-800"
-                              : orgInfo.planCode === "basic"
-                              ? "border border-blue-300 bg-blue-100 text-blue-800"
-                              : "border border-amber-300 bg-amber-100 text-amber-800"
-                          }`}
-                        >
-                          {orgInfo.planName || "Free Trial"} ({orgInfo.subscriptionStatus || "active"})
-                        </span>
-                      </div>
-                      <div className="mt-1 text-xs text-[#6a4d3a]">
-                        {orgInfo.users.length} {orgInfo.users.length === 1 ? "user" : "users"}
-                      </div>
-                    </div>
+                {Object.entries(groupedUsers).map(([organization, orgInfo]) => {
+                  const currentPlanId =
+                    orgInfo.planId ||
+                    plans.find((p) => p.code === orgInfo.planCode)?.id ||
+                    "";
+                  const currentStatus = (orgInfo.subscriptionStatus || "active") as
+                    | "active"
+                    | "trialing"
+                    | "past_due"
+                    | "canceled"
+                    | "unpaid";
 
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs font-medium text-[#5c4332]">Billing Plan:</label>
-                      <select
-                        value={
-                          orgInfo.planId ||
-                          plans.find((p) => p.code === orgInfo.planCode)?.id ||
-                          ""
-                        }
-                        onChange={(event) =>
-                          void handleSetOrgPlan(orgInfo.orgId, event.target.value, "active")
-                        }
-                        disabled={busyAction === `${orgInfo.orgId}:plan`}
-                        className="rounded-lg border border-[#d9c4b0] bg-white px-3 py-1.5 text-xs font-medium text-[#3b2a1e] shadow-sm hover:border-[#b89f8a] focus:outline-none focus:ring-2 focus:ring-[#8c674b] disabled:opacity-50"
-                      >
-                        <option value="" disabled>
-                          Select plan...
-                        </option>
-                        {plans.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} {p.basePriceCents ? `($${(p.basePriceCents / 100).toFixed(2)}/mo)` : "(Free)"}
-                          </option>
-                        ))}
-                      </select>
+                  return (
+                    <div
+                      key={organization}
+                      className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[#e6d6c6] bg-[#fffaf3] p-4 shadow-sm"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-base font-semibold text-[#3b2a1e]">
+                            {orgInfo.orgName || organization}
+                          </h3>
+                          <span
+                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                              currentStatus === "active"
+                                ? "border border-emerald-300 bg-emerald-100 text-emerald-800"
+                                : currentStatus === "trialing"
+                                ? "border border-amber-300 bg-amber-100 text-amber-800"
+                                : "border border-rose-300 bg-rose-100 text-rose-800"
+                            }`}
+                          >
+                            {orgInfo.planName || "Free Trial"} ({currentStatus})
+                          </span>
+                        </div>
+                        <div className="mt-1 text-xs text-[#6a4d3a]">
+                          {orgInfo.users.length} {orgInfo.users.length === 1 ? "usuario" : "usuarios"}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-medium text-[#5c4332]">Plan:</label>
+                          <select
+                            value={currentPlanId}
+                            onChange={(event) =>
+                              void handleSetOrgPlan(orgInfo.orgId, event.target.value, currentStatus)
+                            }
+                            disabled={busyAction === `${orgInfo.orgId}:plan`}
+                            className="rounded-lg border border-[#d9c4b0] bg-white px-3 py-1.5 text-xs font-medium text-[#3b2a1e] shadow-sm hover:border-[#b89f8a] focus:outline-none focus:ring-2 focus:ring-[#8c674b] disabled:opacity-50"
+                          >
+                            <option value="" disabled>
+                              Seleccionar plan...
+                            </option>
+                            {plans.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} {p.basePriceCents ? `($${(p.basePriceCents / 100).toFixed(2)}/mo)` : "(Free)"}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-medium text-[#5c4332]">Estado:</label>
+                          <select
+                            value={currentStatus}
+                            onChange={(event) =>
+                              void handleSetOrgPlan(
+                                orgInfo.orgId,
+                                currentPlanId || plans[0]?.id || "",
+                                event.target.value as "active" | "trialing" | "past_due" | "canceled" | "unpaid"
+                              )
+                            }
+                            disabled={busyAction === `${orgInfo.orgId}:plan`}
+                            className="rounded-lg border border-[#d9c4b0] bg-white px-2.5 py-1.5 text-xs font-medium text-[#3b2a1e] shadow-sm hover:border-[#b89f8a] focus:outline-none focus:ring-2 focus:ring-[#8c674b] disabled:opacity-50"
+                          >
+                            <option value="active">Active</option>
+                            <option value="trialing">Trialing</option>
+                            <option value="past_due">Past Due</option>
+                            <option value="canceled">Canceled</option>
+                          </select>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {Object.keys(groupedUsers).length === 0 && (
                   <div className="text-[#6a4d3a]">No organizations found.</div>
                 )}
@@ -282,7 +314,7 @@ export default function AdminUsersPage() {
           <section className="rounded-2xl border border-[#e6d6c6] bg-white p-6">
             <h2 className="mb-2 text-lg font-semibold text-[#1f1a16]">Users</h2>
             {loading ? (
-              <div>Loading...</div>
+              <div className="py-4 text-sm text-[#6a4d3a]">Cargando usuarios...</div>
             ) : error ? (
               <div className="text-red-600">{error}</div>
             ) : (
@@ -318,34 +350,60 @@ export default function AdminUsersPage() {
                           </span>
                         </td>
                         <td className="px-3 py-2">
-                          <div className="flex flex-col gap-1.5">
+                          <div className="flex flex-col gap-2">
                             {user.memberships?.map((m) => {
                               const orgId = m.organization?.id;
                               const orgData = orgId ? organizations[orgId] : null;
-                              const planName =
-                                orgData?.planName ||
-                                m.organization?.subscriptions?.[0]?.plan?.name ||
-                                "Free Trial";
-                              const planCode =
-                                orgData?.planCode ||
-                                m.organization?.subscriptions?.[0]?.plan?.code ||
-                                "free";
+                              const currentPlanId =
+                                orgData?.planId ||
+                                m.organization?.subscriptions?.[0]?.planId ||
+                                plans.find((p) => p.code === orgData?.planCode)?.id ||
+                                "";
+                              const currentSubStatus = (orgData?.subscriptionStatus ||
+                                m.organization?.subscriptions?.[0]?.status ||
+                                "active") as "active" | "trialing" | "past_due" | "canceled" | "unpaid";
+
                               return (
-                                <div key={m.id} className="flex items-center gap-1.5 text-xs">
-                                  <span className="font-medium text-[#3b2a1e]">
-                                    {m.organization?.name || "Unknown"}
+                                <div key={m.id} className="flex flex-wrap items-center gap-1.5 text-xs">
+                                  <span className="font-semibold text-[#3b2a1e]">
+                                    {m.organization?.name || "Org"}:
                                   </span>
-                                  <span
-                                    className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                                      planCode === "pro"
-                                        ? "bg-emerald-100 text-emerald-800"
-                                        : planCode === "basic"
-                                        ? "bg-blue-100 text-blue-800"
-                                        : "bg-amber-100 text-amber-800"
-                                    }`}
-                                  >
-                                    {planName}
-                                  </span>
+                                  {orgId && (
+                                    <div className="flex items-center gap-1">
+                                      <select
+                                        value={currentPlanId}
+                                        onChange={(e) =>
+                                          void handleSetOrgPlan(orgId, e.target.value, currentSubStatus)
+                                        }
+                                        disabled={busyAction === `${orgId}:plan`}
+                                        className="rounded-lg border border-[#d9c4b0] bg-white px-2 py-1 text-xs font-medium text-[#3b2a1e] shadow-sm hover:border-[#b89f8a] focus:outline-none focus:ring-2 focus:ring-[#8c674b] disabled:opacity-50"
+                                      >
+                                        <option value="" disabled>Plan...</option>
+                                        {plans.map((p) => (
+                                          <option key={p.id} value={p.id}>
+                                            {p.name} {p.basePriceCents ? `($${(p.basePriceCents / 100).toFixed(2)})` : "(Free)"}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <select
+                                        value={currentSubStatus}
+                                        onChange={(e) =>
+                                          void handleSetOrgPlan(
+                                            orgId,
+                                            currentPlanId || plans[0]?.id || "",
+                                            e.target.value as "active" | "trialing" | "past_due" | "canceled" | "unpaid"
+                                          )
+                                        }
+                                        disabled={busyAction === `${orgId}:plan`}
+                                        className="rounded-lg border border-[#d9c4b0] bg-[#fffaf3] px-1.5 py-1 text-[11px] text-[#5c4332] shadow-sm hover:border-[#b89f8a] focus:outline-none disabled:opacity-50"
+                                      >
+                                        <option value="active">Active</option>
+                                        <option value="trialing">Trialing</option>
+                                        <option value="past_due">Past Due</option>
+                                        <option value="canceled">Canceled</option>
+                                      </select>
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}

@@ -202,7 +202,7 @@ export async function PATCH(request: NextRequest) {
       role?: "superadmin" | "admin" | "staff";
       organizationId?: string;
       planId?: string;
-      subscriptionStatus?: "active" | "trialing";
+      subscriptionStatus?: "active" | "trialing" | "past_due" | "canceled" | "unpaid";
     };
 
     if (body.action === "set-status") {
