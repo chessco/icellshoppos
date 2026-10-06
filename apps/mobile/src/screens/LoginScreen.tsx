@@ -14,7 +14,7 @@ import { IPAD_THEME } from "../theme/tokens";
 
 export function LoginScreen() {
   const { login, isLoading, requires2FA, setRequires2FA, loginError, baseUrl, setBaseUrl, savedPassword } = useAuth();
-  const [email, setEmail] = useState("info.cdobregon@gmail.com");
+  const [email, setEmail] = useState("arturo.dltv@gmail.com");
   const [password, setPassword] = useState(savedPassword || "");
   const [code, setCode] = useState("");
   const [showConfig, setShowConfig] = useState(false);
@@ -26,6 +26,12 @@ export function LoginScreen() {
       setPassword(savedPassword);
     }
   }, [savedPassword, password]);
+
+  React.useEffect(() => {
+    if (baseUrl) {
+      setTempUrl(baseUrl);
+    }
+  }, [baseUrl]);
 
   const handleSignIn = async () => {
     setLocalError(null);

@@ -79,12 +79,12 @@ export interface TerminalContextValue {
 const DEFAULT_CAPABILITIES: IPaymentCapabilities = {
   cashEnabled: true,
   transferEnabled: true,
-  cardEnabled: false,
-  stripeReaderEnabled: false,
-  stripeTapToPayEnabled: false,
+  cardEnabled: true,
+  stripeReaderEnabled: true,
+  stripeTapToPayEnabled: true,
   creditEnabled: true,
   otherEnabled: true,
-  defaultMethod: "Cash",
+  defaultMethod: "Card",
 };
 
 const TerminalContext = createContext<TerminalContextValue | null>(null);

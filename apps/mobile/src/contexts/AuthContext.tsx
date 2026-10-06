@@ -6,27 +6,11 @@ import type { SessionMeResponse, IAuthToken } from "@ireader/contracts";
 import { CookieAuthToken, BearerAuthToken } from "@ireader/contracts";
 import { MobileSecureStorageAdapter } from "../storage/MobileSecureStorageAdapter";
 
-export const DEV_NGROK_URL = "https://9a7a-2806-263-481-a79-6d7f-ef8d-326a-ee86.ngrok-free.app";
 export const PROD_BACKEND_URL = "https://probuyer.pitayacode.io";
-export const DEFAULT_BACKEND_URL = DEV_NGROK_URL;
+export const DEFAULT_BACKEND_URL = PROD_BACKEND_URL;
 
 function getInitialBackendUrl(): string {
-  // Always prioritize active HTTPS ngrok tunnel to satisfy iOS App Transport Security (ATS)
-  if (DEFAULT_BACKEND_URL) {
-    return DEFAULT_BACKEND_URL;
-  }
-  try {
-    const scriptURL = (NativeModules as any)?.SourceCode?.scriptURL;
-    if (scriptURL && typeof scriptURL === "string") {
-      const match = scriptURL.match(/^https?:\/\/([^:/]+)/);
-      if (match && match[1] && match[1] !== "localhost" && match[1] !== "127.0.0.1") {
-        return `http://${match[1]}:3007`;
-      }
-    }
-  } catch {
-    // Fallback on error
-  }
-  return "http://127.0.0.1:3007";
+  return PROD_BACKEND_URL;
 }
 
 interface AuthContextValue {
@@ -100,14 +84,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           (savedUrl.includes("127.0.0.1") ||
             savedUrl.includes("localhost") ||
             savedUrl.includes("169.254.") ||
-            savedUrl.includes(":3000"))
+            savedUrl.includes("192.168.") ||
+            savedUrl.includes("10.235.") ||
+            savedUrl.includes("ngrok-free.app") ||
+            savedUrl.includes(":3000") ||
+            savedUrl.includes(":3007"))
         ) {
           savedUrl = null;
           await storage.removeItem("base_url");
         }
 
-        const isDev = typeof __DEV__ !== "undefined" && __DEV__;
-        const effectiveUrl = (isDev && DEV_NGROK_URL) ? DEV_NGROK_URL : (savedUrl || getInitialBackendUrl());
+        const effectiveUrl = savedUrl || PROD_BACKEND_URL;
         if (effectiveUrl && isMounted) {
           setBaseUrlState(effectiveUrl);
           apiClient.setBaseUrl(effectiveUrl);

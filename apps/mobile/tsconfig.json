@@ -47,5 +47,6 @@
     "App.tsx",
     "index.ts",
     "test/**/*"
-  ]
+  ],
+  "extends": "expo/tsconfig.base"
 }

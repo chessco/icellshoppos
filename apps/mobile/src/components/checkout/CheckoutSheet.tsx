@@ -101,15 +101,10 @@ export function CheckoutSheet({
     const list = ALL_PAYMENT_METHODS.filter((m) => {
       if (m.id === "Cash") return capabilities.cashEnabled !== false;
       if (m.id === "Transfer") return capabilities.transferEnabled !== false;
-      if (m.id === "Card") {
-        return Boolean(
-          capabilities.cardEnabled ||
-          capabilities.stripeReaderEnabled ||
-          (isIPhone && capabilities.stripeTapToPayEnabled)
-        );
-      }
+      if (m.id === "Card") return capabilities.cardEnabled !== false;
       if (m.id === "Credit") return capabilities.creditEnabled !== false;
       if (m.id === "Other") return capabilities.otherEnabled !== false;
+      if (m.id === "Card_Handoff") return !isIPhone;
       return true;
     }).map((m) => {
       if (m.id === "Card" && isIPhone && isTapToPayEnabled) {
@@ -121,16 +116,6 @@ export function CheckoutSheet({
       }
       return m;
     });
-
-    // On iPad, offer cross-device Tap to Pay handoff if enabled for site/tenant
-    if (!isIPhone && capabilities.stripeTapToPayEnabled) {
-      list.push({
-        id: "Card_Handoff" as any,
-        label: "Cobrar con iPhone",
-        icon: "📱",
-        description: "Tap to Pay en iPhone autorizado",
-      });
-    }
 
     return list;
   }, [capabilities, isIPhone, isTapToPayEnabled]);

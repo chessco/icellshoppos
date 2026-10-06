@@ -27,10 +27,10 @@ $localIp = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {
     $_.IPAddress -notlike "172.*" -and 
     $_.IPAddress -notlike "169.254.*" -and 
     $_.InterfaceAlias -match "Wi-Fi|Ethernet" 
-} | Sort-Object -Property @{ Expression = { if ($_.IPAddress -like "192.168.*") { 0 } else { 1 } } } | Select-Object -ExpandProperty IPAddress -First 1)
+} | Select-Object -ExpandProperty IPAddress -First 1)
 
 if (-not $localIp) {
-    $localIp = "192.168.100.73"
+    $localIp = "10.235.102.43"
 }
 
 # 3. Backend Next.js (0.0.0.0:3007)
@@ -112,4 +112,4 @@ Write-Host "[4/4] Iniciando Metro Bundler (Expo SDK 57)..." -ForegroundColor Yel
 Write-Host "Escanea el codigo QR que aparecera a continuacion con tu iPad:" -ForegroundColor Cyan
 Write-Host ""
 
-npm --prefix apps/mobile start
+npm --prefix apps/mobile run go

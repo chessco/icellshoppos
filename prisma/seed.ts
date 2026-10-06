@@ -69,14 +69,8 @@ async function main() {
       },
     });
 
-    // Fetch Basic plan for bootstrap subscription
-    const plan = await prisma.plan.findUnique({ where: { code: "basic" } });
-    if (!plan) {
-      throw new Error("Failed to load basic plan after seeding.");
-    }
-
     // Add Pro Plan
-    await prisma.plan.upsert({
+    const proPlan = await prisma.plan.upsert({
       where: { code: "pro" },
       update: {
         name: "Pro",
@@ -98,6 +92,8 @@ async function main() {
         stripePriceId: "prod_U2zyP4ufWNwjEC",
       },
     });
+
+    const plan = proPlan;
   const superAdminEmail =
     process.env.SUPERADMIN_EMAIL?.toLowerCase() ?? "arturo.dltv@gmail.com";
   const superAdminPassword = process.env.SUPERADMIN_PASSWORD ?? "ChangeMeNow!123";
@@ -167,24 +163,24 @@ async function main() {
   });
 
   const now = new Date();
-  const trialEndsAt = new Date(now.getTime() + plan.trialDays * 24 * 60 * 60 * 1000);
+  const periodEnd = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
 
   const subscription = await prisma.subscription.upsert({
     where: { organizationId: bootstrapOrg.id },
     update: {
       planId: plan.id,
-      status: "trialing",
-      trialEndsAt,
+      status: "active",
+      trialEndsAt: null,
       currentPeriodStart: now,
-      currentPeriodEnd: trialEndsAt,
+      currentPeriodEnd: periodEnd,
     },
     create: {
       organizationId: bootstrapOrg.id,
       planId: plan.id,
-      status: "trialing",
-      trialEndsAt,
+      status: "active",
+      trialEndsAt: null,
       currentPeriodStart: now,
-      currentPeriodEnd: trialEndsAt,
+      currentPeriodEnd: periodEnd,
     },
   });
 
@@ -195,14 +191,14 @@ async function main() {
     update: {
       itemType: "base",
       quantity: 1,
-      unitPriceCents: 999,
+      unitPriceCents: 1499,
     },
     create: {
       id: `${subscription.id}-base`,
       subscriptionId: subscription.id,
       itemType: "base",
       quantity: 1,
-      unitPriceCents: 999,
+      unitPriceCents: 1499,
     },
   });
 

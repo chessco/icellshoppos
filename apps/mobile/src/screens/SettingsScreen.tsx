@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
-import { useAuth, DEV_NGROK_URL, PROD_BACKEND_URL } from "../contexts/AuthContext";
+import { useAuth, PROD_BACKEND_URL } from "../contexts/AuthContext";
 import { usePosLayout } from "../contexts/PosLayoutContext";
 import { IPAD_THEME } from "../theme/tokens";
 import { Button } from "../components/ui/Button";
@@ -84,20 +84,6 @@ export function SettingsScreen() {
 
           <View style={{ flexDirection: "row", gap: 10, marginVertical: 12 }}>
             <TouchableOpacity
-              style={[styles.presetBtn, urlInput === DEV_NGROK_URL && styles.presetBtnActive]}
-              onPress={() => {
-                setUrlInput(DEV_NGROK_URL);
-                setBaseUrl(DEV_NGROK_URL);
-                setSavedSuccess(true);
-                setTimeout(() => setSavedSuccess(false), 2000);
-              }}
-            >
-              <Text style={[styles.presetBtnText, urlInput === DEV_NGROK_URL && styles.presetBtnTextActive]}>
-                ⚡ Servidor Local (Ngrok)
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
               style={[styles.presetBtn, urlInput === PROD_BACKEND_URL && styles.presetBtnActive]}
               onPress={() => {
                 setUrlInput(PROD_BACKEND_URL);
@@ -107,7 +93,7 @@ export function SettingsScreen() {
               }}
             >
               <Text style={[styles.presetBtnText, urlInput === PROD_BACKEND_URL && styles.presetBtnTextActive]}>
-                🌐 Producción (Cloud)
+                🌐 Producción Cloud (probuyer.pitayacode.io)
               </Text>
             </TouchableOpacity>
           </View>
