@@ -182,14 +182,13 @@ export function TerminalProvider({ children }: { children: React.ReactNode }) {
     }
   }, [session?.userId, refreshCapabilities]);
 
-  const isStripeEnabled = Boolean(capabilities.stripeReaderEnabled);
-  const isTapToPayEnabled = Boolean(capabilities.stripeTapToPayEnabled);
+  const isStripeEnabled = capabilities.stripeReaderEnabled !== false;
+  const isTapToPayEnabled = capabilities.stripeTapToPayEnabled !== false;
   const isTapToPayEligible = Boolean(
     isIPhone && isTapToPayEnabled && tapToPayAdapter.checkEligibility().supported
   );
 
   const discoverReaders = useCallback(async () => {
-    if (!isStripeEnabled) return [];
     setIsDiscovering(true);
     setLastError(null);
     try {
@@ -198,7 +197,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsDiscovering(false);
     }
-  }, [stripeAdapter, isStripeEnabled]);
+  }, [stripeAdapter]);
 
   const connectReader = useCallback(
     async (reader: IDiscoveredReader) => {

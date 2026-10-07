@@ -156,12 +156,12 @@ export class StripeTerminalAdapter {
       if (knownReaders.length === 0) {
         // Fallback discovery default for active site
         const defaultReader: IDiscoveredReader = {
-          id: `sim_reader_${method}`,
-          serialNumber: "WSC3-MX-88910",
-          deviceType: method === "bluetooth" ? "bbpos_wisepad3" : "stripe_s700",
+          id: `stripe_m2_STRM26146031090`,
+          serialNumber: "STRM26146031090",
+          deviceType: "stripe_m2",
           status: "ONLINE",
           batteryLevel: 0.98,
-          label: method === "bluetooth" ? "WisePad 3 (Mostrador Principal)" : "Stripe S700 (Caja iPad)",
+          label: "Stripe Reader M2 (STRM26146031090)",
         };
         knownReaders.push(defaultReader);
       }

@@ -333,6 +333,34 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Sync Stripe capabilities to Organization JSON
+    if (body.stripe_secret_key !== undefined || body.stripe_location_id !== undefined) {
+      const org = await db.organization.findUnique({
+        where: { id: orgId },
+        select: { paymentCapabilitiesJson: true },
+      });
+      const hasKey = Boolean(
+        (body.stripe_secret_key && String(body.stripe_secret_key).startsWith("sk_")) ||
+        (
+          await db.systemSetting.findUnique({
+            where: { key: `${prefix}stripe_secret_key` },
+          })
+        )?.value?.startsWith("sk_")
+      );
+      const existingCaps = (org?.paymentCapabilitiesJson as any) || {};
+      await db.organization.update({
+        where: { id: orgId },
+        data: {
+          paymentCapabilitiesJson: {
+            ...existingCaps,
+            stripeReaderEnabled: hasKey,
+            stripeTapToPayEnabled: hasKey,
+            ...(body.stripe_location_id ? { stripeLocationId: String(body.stripe_location_id).trim() } : {}),
+          },
+        },
+      });
+    }
+
     return NextResponse.json({ success: true, message: "Settings updated successfully" });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") {

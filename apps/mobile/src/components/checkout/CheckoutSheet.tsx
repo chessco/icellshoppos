@@ -448,10 +448,10 @@ export function CheckoutSheet({
     }
 
     // ─── STRIPE PHYSICAL READER FLOW (iPad) ─────────────────────────────────
-    if (paymentMethod === "Card" && isStripeEnabled && !isIPhone) {
+    if (paymentMethod === "Card" && !isIPhone) {
       if (!connectedReader) {
         setIsSubmitting(false);
-        setErrorMessage("Por favor conecte un lector Stripe antes de procesar el pago con tarjeta.");
+        setErrorMessage("Por favor conecte su lector Stripe (STRM26146031090) con el botón 'Buscar Lectores' antes de procesar el cobro con tarjeta.");
         return;
       }
 
@@ -772,8 +772,8 @@ export function CheckoutSheet({
               </View>
             )}
 
-            {/* Stripe Reader Integration Status (Only shown on iPad when Card + Stripe Reader is active) */}
-            {paymentMethod === "Card" && isStripeEnabled && !isIPhone && (
+            {/* Stripe Reader Integration Status (Shown on iPad when Card is active) */}
+            {paymentMethod === "Card" && !isIPhone && (
               <View style={styles.readerContainer}>
                 <View style={styles.readerHeaderRow}>
                   <Text style={styles.readerHeaderTitle}>Lector Stripe Terminal</Text>

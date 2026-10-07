@@ -115,7 +115,31 @@ export async function resolvePaymentCapabilities(
     }
   }
 
+  // Check if organization has Stripe configured in SystemSetting
+  const stripeKeySetting = await dbClient.systemSetting.findUnique({
+    where: { key: `integration:${organizationId}:stripe_secret_key` },
+  }).catch(() => null);
+
+  const stripeLocSetting = await dbClient.systemSetting.findUnique({
+    where: { key: `integration:${organizationId}:stripe_location_id` },
+  }).catch(() => null);
+
+  const hasStripeConfigured = Boolean(
+    (stripeKeySetting?.value && stripeKeySetting.value.startsWith("sk_")) ||
+    (process.env.STRIPE_SECRET_KEY && process.env.STRIPE_SECRET_KEY.startsWith("sk_"))
+  );
+
   const capabilities = normalizePaymentCapabilities(org?.paymentCapabilitiesJson, siteJson);
+
+  // If Stripe is configured in settings and not explicitly disabled in org capabilities, enable it by default
+  if (hasStripeConfigured && org?.paymentCapabilitiesJson == null) {
+    capabilities.stripeReaderEnabled = true;
+    capabilities.tapToPayIPhoneEnabled = true;
+  }
+
+  if (stripeLocSetting?.value && !capabilities.stripeLocationId) {
+    capabilities.stripeLocationId = stripeLocSetting.value.trim();
+  }
 
   if (siteLocationId && !capabilities.stripeLocationId) {
     capabilities.stripeLocationId = siteLocationId;
