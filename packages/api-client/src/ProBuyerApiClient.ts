@@ -368,9 +368,15 @@ export class ProBuyerApiClient {
   }
 
   async createStripePaymentIntent(payload: ICreatePaymentIntentPayload): Promise<ICreatePaymentIntentResponse> {
+    const body = {
+      ...payload,
+      idempotencyKey:
+        payload.idempotencyKey ||
+        `ik_${payload.saleId || "charge"}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    };
     const res = await this.request<ICreatePaymentIntentResponse>("/api/payments/stripe/create-intent", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     });
     if (!res.ok || !res.data) {
       return {

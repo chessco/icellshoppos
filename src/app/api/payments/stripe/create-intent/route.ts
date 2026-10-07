@@ -26,12 +26,12 @@ export async function POST(request: NextRequest) {
       cartContext,
     } = body;
 
-    if (!idempotencyKey || typeof idempotencyKey !== "string") {
-      return NextResponse.json(
-        { error: "idempotencyKey is required to guarantee charge idempotency." },
-        { status: 400 }
-      );
-    }
+    const finalIdempotencyKey =
+      typeof idempotencyKey === "string" && idempotencyKey.trim()
+        ? idempotencyKey.trim()
+        : saleId
+        ? `pos_intent_${String(saleId).trim()}`
+        : `pos_intent_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
     if (amount === undefined || typeof amount !== "number" || amount <= 0) {
       return NextResponse.json(
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       channel: validChannel,
       posDeviceId: posDeviceId ? String(posDeviceId).trim() : undefined,
       stripeReaderId: stripeReaderId ? String(stripeReaderId).trim() : undefined,
-      idempotencyKey: String(idempotencyKey).trim(),
+      idempotencyKey: finalIdempotencyKey,
       notes: notes ? String(notes).trim() : undefined,
       cartContext,
     });

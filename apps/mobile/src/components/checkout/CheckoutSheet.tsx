@@ -326,6 +326,7 @@ export function CheckoutSheet({
         // 1. Backend creates PaymentIntent & PosPayment with STRIPE_TAP_TO_PAY_IPHONE channel
         const intentRes = await checkoutService.initiateStripeCardPayment({
           saleId: checkoutIdRef.current,
+          idempotencyKey: `ik_ttp_${checkoutIdRef.current}_${Date.now()}`,
           amount: totalPreview,
           currency: capabilities.currency || "mxn",
           posDeviceId,
@@ -473,6 +474,7 @@ export function CheckoutSheet({
         // 1. Backend creates PaymentIntent & PosPayment
         const intentRes = await checkoutService.initiateStripeCardPayment({
           saleId: checkoutIdRef.current,
+          idempotencyKey: `ik_reader_${checkoutIdRef.current}_${Date.now()}`,
           amount: totalPreview,
           currency: capabilities.currency || "mxn",
           posDeviceId,
