@@ -73,6 +73,17 @@ export default function IntegrationsPage() {
     paymentIntent?: { id: string; amount: number; currency: string; status: string; dashboardUrl?: string };
   } | null>(null);
 
+  // WhatsApp Test State
+  const [testWhatsAppPhone, setTestWhatsAppPhone] = useState("");
+  const [testingWhatsApp, setTestingWhatsApp] = useState(false);
+  const [whatsappTestResult, setWhatsappTestResult] = useState<{
+    success: boolean;
+    connected: boolean;
+    message?: string;
+    error?: string;
+    webFallbackUrl?: string;
+  } | null>(null);
+
   useEffect(() => {
     fetchSettings();
   }, []);
@@ -306,6 +317,49 @@ export default function IntegrationsPage() {
       });
     } finally {
       setTestingCharge(false);
+    }
+  };
+
+  const handleTestWhatsApp = async () => {
+    setTestingWhatsApp(true);
+    setWhatsappTestResult(null);
+    try {
+      const res = await fetch("/api/settings/integrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "test_whatsapp",
+          phone: testWhatsAppPhone || settings.pitayacore_authorizer_phone,
+          whatsapp_provider: settings.whatsapp_provider,
+          pitayacore_api_url: settings.pitayacore_api_url,
+          pitayacore_api_key: settings.pitayacore_api_key,
+          pitayacore_tenant_id: settings.pitayacore_tenant_id,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setWhatsappTestResult({
+          success: true,
+          connected: true,
+          message: data.message || "¡Mensaje de WhatsApp entregado exitosamente!",
+          webFallbackUrl: data.webFallbackUrl,
+        });
+      } else {
+        setWhatsappTestResult({
+          success: false,
+          connected: false,
+          error: data.error || "No se pudo entregar el mensaje de prueba.",
+          webFallbackUrl: data.webFallbackUrl,
+        });
+      }
+    } catch (e) {
+      setWhatsappTestResult({
+        success: false,
+        connected: false,
+        error: "Error de red al intentar enviar el mensaje de prueba.",
+      });
+    } finally {
+      setTestingWhatsApp(false);
     }
   };
 
@@ -1098,6 +1152,105 @@ export default function IntegrationsPage() {
                         </ul>
                       </div>
                     )}
+
+                    {/* TEST WHATSAPP CONNECTION PANEL */}
+                    <div className="mt-8 rounded-3xl border border-indigo-100 bg-[#f8fbff] p-6 shadow-xs">
+                      <div className="flex items-center justify-between gap-4 mb-4">
+                        <div>
+                          <h3 className="text-sm font-black uppercase tracking-wider text-[#0f1f3d]">
+                            🧪 Diagnóstico y Prueba de WhatsApp en Vivo
+                          </h3>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Valide en tiempo real la conexión del tenant con PitayaCore enviando un mensaje de prueba a un teléfono real.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                        <div className="flex-1">
+                          <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-1.5 block">
+                            Número de WhatsApp para la prueba (10 o 12-13 dígitos)
+                          </label>
+                          <input
+                            type="text"
+                            value={testWhatsAppPhone}
+                            onChange={(e) => setTestWhatsAppPhone(e.target.value)}
+                            placeholder={settings.pitayacore_authorizer_phone || "ej. 5212223334455 o 2223334455"}
+                            className="w-full rounded-2xl border border-[#c7dcff] bg-white px-4 py-3 font-mono text-xs text-[#0f1f3d] outline-none focus:border-indigo-600"
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleTestWhatsApp}
+                          disabled={testingWhatsApp}
+                          className="flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3 text-xs font-black uppercase tracking-wider text-white shadow-md hover:bg-indigo-700 active:scale-95 disabled:opacity-50"
+                        >
+                          {testingWhatsApp ? (
+                            <>
+                              <div className="size-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                              <span>Enviando a PitayaCore...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span>📲 Enviar WhatsApp de Prueba</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      {whatsappTestResult && (
+                        <div
+                          className={`mt-4 rounded-2xl border p-4 text-xs ${
+                            whatsappTestResult.success
+                              ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                              : "border-rose-300 bg-rose-50 text-rose-900"
+                          }`}
+                        >
+                          {whatsappTestResult.success ? (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2 font-bold text-emerald-800 text-sm">
+                                <span>✅ {whatsappTestResult.message}</span>
+                              </div>
+                              <p className="text-[11px] text-emerald-700 font-medium">
+                                El tenant y la API Key están activos y el mensaje fue despachado al servidor de WhatsApp correctamente.
+                              </p>
+                              {whatsappTestResult.webFallbackUrl && (
+                                <a
+                                  href={whatsappTestResult.webFallbackUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 mt-1"
+                                >
+                                  <span>Abrir en WhatsApp Web ↗</span>
+                                </a>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <div className="font-bold text-rose-800 text-sm">
+                                ❌ Error al enviar mensaje:
+                              </div>
+                              <div className="font-mono text-xs text-rose-700">
+                                {whatsappTestResult.error}
+                              </div>
+                              {whatsappTestResult.webFallbackUrl && (
+                                <div className="pt-2">
+                                  <a
+                                    href={whatsappTestResult.webFallbackUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700"
+                                  >
+                                    <span>Abrir enlace directo wa.me ↗</span>
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
 
                     {/* Bottom Save Button & Status Badge */}
                     <div className="mt-8 flex flex-wrap items-center gap-4 pt-4">

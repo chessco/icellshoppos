@@ -92,6 +92,66 @@ export async function POST(request: NextRequest) {
       };
     };
 
+    // Action: Test WhatsApp Connection
+    if (body.action === "test_whatsapp") {
+      try {
+        const { whatsAppGateway } = await import("@/lib/whatsapp-service");
+        const testPhone = body.phone?.trim() || body.pitayacore_authorizer_phone?.trim() || "";
+        if (!testPhone) {
+          return NextResponse.json(
+            { success: false, error: "Debe ingresar un número de WhatsApp para la prueba (ej. 5212221234567)." },
+            { status: 400 }
+          );
+        }
+
+        // Allow overriding credentials for real-time testing before saving
+        const testApiUrl = body.pitayacore_api_url?.trim() || undefined;
+        const testApiKey = body.pitayacore_api_key?.trim() || undefined;
+        const testTenantId = body.pitayacore_tenant_id?.trim() || undefined;
+
+        // If credentials are supplied in request, temporarily set or use orgId
+        const testContent = `🟢 *iCellShop POS - Conexión Exitosa*\n\nEste es un mensaje de prueba para verificar la integración de WhatsApp con PitayaCore.\n\n📅 Fecha: ${new Date().toLocaleString("es-MX")}\n🏢 Organización: ${orgId.slice(0, 8)}`;
+
+        const result = await whatsAppGateway.sendMessage(
+          testPhone,
+          testContent,
+          orgId,
+          {
+            apiUrl: testApiUrl,
+            apiKey: testApiKey,
+            tenantId: testTenantId,
+            provider: body.whatsapp_provider,
+          }
+        );
+
+        if (result.success) {
+          return NextResponse.json({
+            success: true,
+            connected: true,
+            providerMessageId: result.providerMessageId,
+            message: `¡Mensaje de prueba enviado exitosamente a ${testPhone}!`,
+            webFallbackUrl: result.webFallbackUrl,
+          });
+        } else {
+          return NextResponse.json({
+            success: false,
+            connected: false,
+            error: result.error || "No se pudo entregar el mensaje al número indicado.",
+            webFallbackUrl: result.webFallbackUrl,
+          }, { status: 400 });
+        }
+      } catch (waErr: any) {
+        return NextResponse.json(
+          {
+            success: false,
+            connected: false,
+            error: waErr?.message || "Error al conectar con la pasarela de WhatsApp.",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // Action: Test Stripe Connection
     if (body.action === "test_stripe") {
       try {

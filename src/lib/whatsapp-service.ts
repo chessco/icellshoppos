@@ -43,10 +43,20 @@ export class WhatsAppGatewayService {
     return match ? match[0] : undefined;
   }
 
-  async sendMessage(toPhone: string, content: string, orgId?: string): Promise<SendWhatsAppResult> {
-    let activeApiUrl = this.apiUrl;
-    let activeApiKey = this.apiKey;
-    let activeTenantId = this.tenantId;
+  async sendMessage(
+    toPhone: string,
+    content: string,
+    orgId?: string,
+    overrideConfig?: {
+      apiUrl?: string;
+      apiKey?: string;
+      tenantId?: string;
+      provider?: string;
+    }
+  ): Promise<SendWhatsAppResult> {
+    let activeApiUrl = (this.apiUrl || process.env.PITAYACORE_API_URL || "https://pitayacore-api.pitayacode.io/api").replace(/\/+$/, "");
+    let activeApiKey = this.apiKey || process.env.PITAYACORE_API_KEY || "";
+    let activeTenantId = this.tenantId || process.env.PITAYACORE_TENANT_ID || "";
     let activeProvider = "PITAYACORE";
 
     if (orgId) {
@@ -57,19 +67,25 @@ export class WhatsAppGatewayService {
         });
         const map = new Map(rows.map((r) => [r.key.replace(`integration:${orgId}:`, ""), r.value]));
 
-        if (map.get("whatsapp_provider")) activeProvider = map.get("whatsapp_provider")!.trim().toUpperCase();
-        if (map.get("pitayacore_api_url")) activeApiUrl = map.get("pitayacore_api_url")!.replace(/\/+$/, "");
-        if (map.get("pitayacore_api_key")) activeApiKey = map.get("pitayacore_api_key")!;
-        if (map.get("pitayacore_tenant_id")) activeTenantId = map.get("pitayacore_tenant_id")!;
+        if (map.get("whatsapp_provider")?.trim()) activeProvider = map.get("whatsapp_provider")!.trim().toUpperCase();
+        if (map.get("pitayacore_api_url")?.trim()) activeApiUrl = map.get("pitayacore_api_url")!.trim().replace(/\/+$/, "");
+        if (map.get("pitayacore_api_key")?.trim()) activeApiKey = map.get("pitayacore_api_key")!.trim();
+        if (map.get("pitayacore_tenant_id")?.trim()) activeTenantId = map.get("pitayacore_tenant_id")!.trim();
 
         if (activeProvider === "FLOW") {
-          if (map.get("flow_api_url")) activeApiUrl = map.get("flow_api_url")!.replace(/\/+$/, "");
-          if (map.get("flow_internal_key")) activeApiKey = map.get("flow_internal_key")!;
+          if (map.get("flow_api_url")?.trim()) activeApiUrl = map.get("flow_api_url")!.trim().replace(/\/+$/, "");
+          if (map.get("flow_internal_key")?.trim()) activeApiKey = map.get("flow_internal_key")!.trim();
         }
       } catch (e) {
         // Fallback to default credentials
       }
     }
+
+    // Direct overrides take priority (e.g. testing credentials live from UI before save)
+    if (overrideConfig?.apiUrl?.trim()) activeApiUrl = overrideConfig.apiUrl.trim().replace(/\/+$/, "");
+    if (overrideConfig?.apiKey?.trim()) activeApiKey = overrideConfig.apiKey.trim();
+    if (overrideConfig?.tenantId?.trim()) activeTenantId = overrideConfig.tenantId.trim();
+    if (overrideConfig?.provider?.trim()) activeProvider = overrideConfig.provider.trim().toUpperCase();
 
     const { primary, secondary, cleanDigits } = this.normalizeRecipient(toPhone);
     const mediaUrl = this.extractMediaUrl(content);
