@@ -12,9 +12,11 @@ export async function POST(request: NextRequest) {
     }
 
     let posDeviceId: string | undefined;
+    let locationId: string | undefined;
     try {
       const body = await request.json().catch(() => ({}));
       posDeviceId = body?.posDeviceId ? String(body.posDeviceId).trim() : undefined;
+      locationId = body?.locationId ? String(body.locationId).trim() : undefined;
     } catch {
       // Body is optional
     }
@@ -23,6 +25,7 @@ export async function POST(request: NextRequest) {
       organizationId,
       userId: session.userId,
       posDeviceId,
+      locationId,
     });
 
     return NextResponse.json({ secret: token.secret });

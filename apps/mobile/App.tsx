@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "./src/contexts/AuthContext";
@@ -12,6 +12,8 @@ import { PosLayoutProvider } from "./src/contexts/PosLayoutContext";
 import { CommissionProvider } from "./src/contexts/CommissionContext";
 
 import { TerminalProvider } from "./src/contexts/TerminalContext";
+import { getTapToPayMode } from "./src/config/paymentConfig";
+import { loadStripeTerminalNative } from "./src/services/nativeStripeTerminal";
 
 function AppContent() {
   const { session, isRestoringSession } = useAuth();
@@ -41,11 +43,40 @@ function AppContent() {
   );
 }
 
+function StripeTerminalRoot({ children }: { children: React.ReactElement }) {
+  if (getTapToPayMode() !== "real") {
+    return children;
+  }
+
+  const nativeStripe = loadStripeTerminalNative();
+  const StripeTerminalProvider = nativeStripe?.StripeTerminalProvider;
+  if (!StripeTerminalProvider) {
+    return children;
+  }
+
+  const { apiClient } = useAuth();
+  const tokenProvider = useCallback(async () => {
+    const response = await apiClient.getStripeConnectionToken();
+    if (!response.ok || !response.secret) {
+      throw new Error(response.error || "No se pudo obtener el Connection Token de Stripe.");
+    }
+    return response.secret;
+  }, [apiClient]);
+
+  return (
+    <StripeTerminalProvider tokenProvider={tokenProvider} logLevel="none">
+      {children}
+    </StripeTerminalProvider>
+  );
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <AppContent />
+        <StripeTerminalRoot>
+          <AppContent />
+        </StripeTerminalRoot>
       </AuthProvider>
     </SafeAreaProvider>
   );

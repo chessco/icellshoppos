@@ -71,30 +71,32 @@ export async function POST(request: NextRequest) {
     const orgId = membership.organizationId;
     const prefix = `integration:${orgId}:`;
 
+    // Helper to get Stripe client
+    const getStripeClient = async () => {
+      let secretKey = body.stripe_secret_key?.trim();
+      if (!secretKey) {
+        const row = await db.systemSetting.findUnique({
+          where: { key: `${prefix}stripe_secret_key` },
+        });
+        secretKey = row?.value;
+      }
+      if (!secretKey) {
+        secretKey = process.env.STRIPE_SECRET_KEY;
+      }
+      if (!secretKey || !secretKey.startsWith("sk_")) {
+        throw new Error("La clave Stripe Secret Key (sk_...) es requerida y debe comenzar con sk_.");
+      }
+      return {
+        stripe: new Stripe(secretKey, { apiVersion: "2026-02-25.clover" as any }),
+        secretKey,
+      };
+    };
+
     // Action: Test Stripe Connection
     if (body.action === "test_stripe") {
-      const secretKey =
-        body.stripe_secret_key?.trim() ||
-        (
-          await db.systemSetting.findUnique({
-            where: { key: `${prefix}stripe_secret_key` },
-          })
-        )?.value ||
-        process.env.STRIPE_SECRET_KEY;
-
-      if (!secretKey || !secretKey.startsWith("sk_")) {
-        return NextResponse.json(
-          { error: "La clave Stripe Secret Key (sk_...) es requerida y debe comenzar con sk_." },
-          { status: 400 }
-        );
-      }
-
       try {
-        const testClient = new Stripe(secretKey, {
-          apiVersion: "2026-02-25.clover" as any,
-        });
+        const { stripe: testClient, secretKey } = await getStripeClient();
 
-        // Query Stripe Account / Balance to verify valid authentication
         const [account, balance] = await Promise.all([
           testClient.accounts.retrieve().catch(() => null),
           testClient.balance.retrieve().catch(() => null),
@@ -128,6 +130,175 @@ export async function POST(request: NextRequest) {
             connected: false,
             error: stripeErr?.message || "Error al autenticar con Stripe API.",
           },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Action: List Locations
+    if (body.action === "list_stripe_locations") {
+      try {
+        const { stripe } = await getStripeClient();
+        const locations = await stripe.terminal.locations.list({ limit: 20 });
+        return NextResponse.json({
+          success: true,
+          locations: locations.data.map((l) => ({
+            id: l.id,
+            displayName: l.display_name,
+            address: l.address,
+          })),
+        });
+      } catch (err: any) {
+        return NextResponse.json(
+          { success: false, error: err?.message || "Error al consultar ubicaciones de Stripe." },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Action: Create Location
+    if (body.action === "create_stripe_location") {
+      try {
+        const { stripe } = await getStripeClient();
+        const location = await stripe.terminal.locations.create({
+          display_name: body.displayName?.trim() || "Tienda Principal iCellShop",
+          address: {
+            line1: body.line1?.trim() || "Av. Principal 123",
+            city: body.city?.trim() || "Puebla",
+            state: body.state?.trim() || "Puebla",
+            country: "MX",
+            postal_code: body.postalCode?.trim() || "72000",
+          },
+        });
+
+        // Save as default if requested
+        if (body.saveAsDefault) {
+          const locKey = `${prefix}stripe_location_id`;
+          await db.systemSetting.upsert({
+            where: { key: locKey },
+            update: { value: location.id },
+            create: { key: locKey, value: location.id },
+          });
+        }
+
+        return NextResponse.json({
+          success: true,
+          location: {
+            id: location.id,
+            displayName: location.display_name,
+            address: location.address,
+          },
+        });
+      } catch (err: any) {
+        return NextResponse.json(
+          { success: false, error: err?.message || "Error al crear ubicación en Stripe." },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Action: List Readers
+    if (body.action === "list_stripe_readers") {
+      try {
+        const { stripe } = await getStripeClient();
+        const readers = await stripe.terminal.readers.list({
+          location: body.locationId || undefined,
+          limit: 30,
+        });
+        return NextResponse.json({
+          success: true,
+          readers: readers.data.map((r) => ({
+            id: r.id,
+            label: r.label,
+            deviceType: r.device_type,
+            serialNumber: r.serial_number,
+            status: r.status,
+            location: r.location,
+            ipAddress: r.ip_address,
+          })),
+        });
+      } catch (err: any) {
+        return NextResponse.json(
+          { success: false, error: err?.message || "Error al consultar lectores de Stripe." },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Action: Register Reader (Physical or Simulated)
+    if (body.action === "register_stripe_reader") {
+      try {
+        const { stripe } = await getStripeClient();
+        const code = body.registrationCode?.trim();
+        if (!code) {
+          return NextResponse.json(
+            { success: false, error: "El código de registro (registration_code) es requerido." },
+            { status: 400 }
+          );
+        }
+
+        const reader = await stripe.terminal.readers.create({
+          registration_code: code,
+          label: body.label?.trim() || "Terminal iCellShop",
+          location: body.locationId || undefined,
+        });
+
+        return NextResponse.json({
+          success: true,
+          reader: {
+            id: reader.id,
+            label: reader.label,
+            deviceType: reader.device_type,
+            serialNumber: reader.serial_number,
+            status: reader.status,
+            location: reader.location,
+          },
+        });
+      } catch (err: any) {
+        return NextResponse.json(
+          { success: false, error: err?.message || "Error al registrar el lector en Stripe." },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Action: Test Charge (PaymentIntent creation & verification)
+    if (body.action === "test_stripe_charge") {
+      try {
+        const { stripe, secretKey } = await getStripeClient();
+        const isTestMode = secretKey.startsWith("sk_test_");
+        const amount = Math.max(10, Number(body.amount || 10));
+
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: Math.round(amount * 100),
+          currency: (body.currency || "mxn").toLowerCase(),
+          payment_method_types: ["card_present"],
+          capture_method: "automatic",
+          description: "Prueba de Terminal iReader POS",
+          metadata: {
+            organizationId: orgId,
+            testMode: isTestMode ? "true" : "false",
+            createdFrom: "Settings Integrations Test Runner",
+          },
+        });
+
+        const dashboardUrl = `https://dashboard.stripe.com/${isTestMode ? "test/" : ""}payments/${paymentIntent.id}`;
+
+        return NextResponse.json({
+          success: true,
+          paymentIntent: {
+            id: paymentIntent.id,
+            amount: paymentIntent.amount / 100,
+            currency: paymentIntent.currency.toUpperCase(),
+            status: paymentIntent.status,
+            clientSecret: paymentIntent.client_secret,
+            dashboardUrl,
+          },
+          message: `PaymentIntent ${paymentIntent.id} creado con éxito por $${amount.toFixed(2)} ${paymentIntent.currency.toUpperCase()}.`,
+        });
+      } catch (err: any) {
+        return NextResponse.json(
+          { success: false, error: err?.message || "Error al crear cobro de prueba en Stripe." },
           { status: 400 }
         );
       }

@@ -99,7 +99,8 @@ export function AppleTouchPosView({
   };
 
   // En iPad vertical, 2 columnas amplias es la proporción ideal
-  const numColumns = width >= 1200 ? 3 : 2;
+  const isPhone = width < IPAD_THEME.breakpoints.compact;
+  const numColumns = isPhone ? 1 : width >= 1200 ? 3 : 2;
 
   // Agrupamiento maestro por modelo (priorizando iPhones más vendidos al inicio)
   const allGroups = useMemo(() => {
@@ -194,8 +195,8 @@ export function AppleTouchPosView({
       {/* Top Search & Category Bar */}
       <View style={styles.topControlPanel}>
         {/* Search, Scanner & View Toggle Row */}
-        <View style={styles.searchRow}>
-          <View style={styles.searchInputWrapper}>
+        <View style={[styles.searchRow, isPhone && styles.searchRowPhone]}>
+          <View style={[styles.searchInputWrapper, isPhone && styles.phoneSearchInputWrapper]}>
             <Text style={styles.searchIcon}>🔍</Text>
             <TextInput
               style={styles.searchInput}
@@ -214,7 +215,7 @@ export function AppleTouchPosView({
           </View>
 
           <TouchableOpacity
-            style={styles.scanLauncherBtn}
+            style={[styles.scanLauncherBtn, isPhone && styles.phoneActionButton]}
             onPress={onOpenScanner}
             accessibilityRole="button"
             accessibilityLabel="Escanear con cámara"
@@ -222,7 +223,7 @@ export function AppleTouchPosView({
             <Text style={styles.scanLauncherText}>📷 Escanear</Text>
           </TouchableOpacity>
 
-          {onOpenMessages && (
+          {onOpenMessages && !isPhone && (
             <TouchableOpacity
               style={styles.messagesLauncherBtn}
               onPress={onOpenMessages}
@@ -235,7 +236,7 @@ export function AppleTouchPosView({
           )}
 
           {/* Toggle de densidad: Cuadrícula vs Lista Compacta */}
-          <View style={styles.densityToggle}>
+          <View style={[styles.densityToggle, isPhone && styles.phoneDensityToggle]}>
             <TouchableOpacity
               style={[styles.densityBtn, viewDensity === "grid" && styles.densityBtnActive]}
               onPress={() => setViewDensity("grid")}
@@ -486,6 +487,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: IPAD_THEME.spacing.sm,
   },
+  searchRowPhone: {
+    flexWrap: "wrap",
+  },
   searchInputWrapper: {
     flex: 1,
     flexDirection: "row",
@@ -496,6 +500,19 @@ const styles = StyleSheet.create({
     height: 42,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.08)",
+  },
+  phoneActionButton: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 8,
+  },
+  phoneSearchInputWrapper: {
+    flexBasis: "100%",
+    width: "100%",
+    flexGrow: 0,
+  },
+  phoneDensityToggle: {
+    flex: 0,
   },
   searchIcon: {
     fontSize: 15,

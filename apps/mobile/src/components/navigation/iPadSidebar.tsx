@@ -134,7 +134,9 @@ export function IPadSidebar({
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: "auto",
     height: "100%",
     width: IPAD_THEME.sidebar.expandedWidth,
     backgroundColor: IPAD_THEME.colors.sidebarBackground,

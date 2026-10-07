@@ -15,6 +15,8 @@ import type {
   IVerifyPaymentStatusResponse,
 } from "@ireader/contracts";
 import type { ProBuyerApiClient } from "@ireader/api-client";
+import { getTapToPayMode, type TapToPayMode } from "../config/paymentConfig";
+import { loadStripeTerminalNative } from "./nativeStripeTerminal";
 
 export interface IPlatformInfo {
   OS: string;
@@ -68,12 +70,23 @@ export class TapToPayIPhoneAdapter {
   private platformInfo: IPlatformInfo;
   private operationalState: TapToPayOperationalState = "READY";
   private isConnected = false;
+  private readonly mode: TapToPayMode;
   private listeners: Set<ITapToPayListener> = new Set();
 
-  constructor(apiClient: ProBuyerApiClient, siteId?: string, platformInfo?: IPlatformInfo) {
+  constructor(
+    apiClient: ProBuyerApiClient,
+    siteId?: string,
+    platformInfo?: IPlatformInfo,
+    mode: TapToPayMode = getTapToPayMode()
+  ) {
     this.apiClient = apiClient;
     this.siteId = siteId;
     this.platformInfo = platformInfo || getDefaultPlatformInfo();
+    this.mode = mode;
+  }
+
+  public getMode(): TapToPayMode {
+    return this.mode;
   }
 
   public setSiteId(siteId?: string) {
@@ -164,10 +177,32 @@ export class TapToPayIPhoneAdapter {
     }
 
     try {
+      if (this.mode === "simulated") {
+        this.setState("PREPARING_TAP_TO_PAY");
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        this.isConnected = true;
+        this.setState("READY");
+        return true;
+      }
+
+      if (!this.siteId) {
+        throw new Error("Stripe Location is required before initializing Tap to Pay.");
+      }
+
       this.setState("PREPARING_TAP_TO_PAY");
-      const tokenRes = await this.apiClient.getStripeConnectionToken(this.siteId);
-      if (!tokenRes.ok || !tokenRes.secret) {
-        throw new Error(tokenRes.error || "Failed to obtain Stripe Connection Token for Tap to Pay.");
+      const sdk = loadStripeTerminalNative()?.StripeTerminalSdk;
+      if (!sdk) {
+        throw new Error("Stripe Terminal nativo no está disponible. Instale un Development Build.");
+      }
+      const result = await sdk.easyConnect({
+        discoveryMethod: "tapToPay",
+        locationId: this.siteId,
+        merchantDisplayName: "iReader POS",
+        autoReconnectOnUnexpectedDisconnect: true,
+      });
+
+      if (result.error || !result.reader) {
+        throw new Error(result.error?.message || "Stripe no pudo preparar Tap to Pay en este iPhone.");
       }
 
       this.isConnected = true;
@@ -200,22 +235,50 @@ export class TapToPayIPhoneAdapter {
     onProgress?: (step: TapToPayOperationalState) => void
   ): Promise<IVerifyPaymentStatusResponse> {
     try {
+      if (!this.isConnected) {
+        throw new Error("Tap to Pay no está inicializado. Prepare el terminal antes de cobrar.");
+      }
+
       // 1. Readying proximity prompt
       this.setState("PREPARING_TAP_TO_PAY");
       if (onProgress) onProgress("PREPARING_TAP_TO_PAY");
+
+      if (this.mode === "simulated") {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        this.setState("PROCESSING_PAYMENT");
+        if (onProgress) onProgress("PROCESSING_PAYMENT");
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        this.setState("VERIFYING_PAYMENT");
+        if (onProgress) onProgress("VERIFYING_PAYMENT");
+        const simulatedResult = await this.apiClient.verifyStripePaymentStatus({
+          paymentIntentId: intent.paymentIntentId,
+          paymentAttemptId: intent.paymentAttemptId,
+        });
+        return this.resolveVerification(simulatedResult, onProgress);
+      }
+
+      const sdk = loadStripeTerminalNative()?.StripeTerminalSdk;
+      if (!sdk) {
+        throw new Error("Stripe Terminal nativo no está disponible. Instale un Development Build.");
+      }
+      const retrieved = await sdk.retrievePaymentIntent(intent.clientSecret);
+      if (retrieved.error || !retrieved.paymentIntent) {
+        throw new Error(retrieved.error?.message || "No se pudo cargar el PaymentIntent en Stripe Terminal.");
+      }
 
       // 2. Waiting for customer to present card/wallet against iPhone top edge
       this.setState("WAITING_FOR_CUSTOMER");
       if (onProgress) onProgress("WAITING_FOR_CUSTOMER");
 
-      // Operational delay simulating Apple Proximity Reader contactless presentation
-      await new Promise((r) => setTimeout(r, 600));
-
-      // 3. Contactless card data read -> Processing with Stripe
+      // 3. Contactless card data read and processing with the native Stripe SDK
       this.setState("PROCESSING_PAYMENT");
       if (onProgress) onProgress("PROCESSING_PAYMENT");
-
-      await new Promise((r) => setTimeout(r, 600));
+      const processed = await sdk.processPaymentIntent({
+        paymentIntent: retrieved.paymentIntent,
+      });
+      if (processed.error || !processed.paymentIntent) {
+        throw new Error(processed.error?.message || "El pago sin contacto fue rechazado.");
+      }
 
       // 4. Authoritative backend verification
       this.setState("VERIFYING_PAYMENT");
@@ -226,34 +289,7 @@ export class TapToPayIPhoneAdapter {
         paymentAttemptId: intent.paymentAttemptId,
       });
 
-      if (verifyResult.isUnknown || verifyResult.status === "UNKNOWN") {
-        this.setState("PAYMENT_UNKNOWN");
-        if (onProgress) onProgress("PAYMENT_UNKNOWN");
-        return {
-          ok: false,
-          status: "UNKNOWN",
-          paymentAttemptStatus: "UNKNOWN",
-          posPaymentStatus: "UNKNOWN",
-          isUnknown: true,
-          error: "Tap to Pay transaction status is ambiguous. Verifying with Stripe server...",
-        };
-      }
-
-      if (verifyResult.ok && (verifyResult.status === "SUCCEEDED" || verifyResult.posPaymentStatus === "PAID")) {
-        this.setState("PAYMENT_SUCCEEDED");
-        if (onProgress) onProgress("PAYMENT_SUCCEEDED");
-        return verifyResult;
-      }
-
-      this.setState("PAYMENT_FAILED");
-      if (onProgress) onProgress("PAYMENT_FAILED");
-      return {
-        ok: false,
-        status: "FAILED",
-        paymentAttemptStatus: verifyResult.paymentAttemptStatus || "FAILED",
-        posPaymentStatus: verifyResult.posPaymentStatus || "FAILED",
-        error: verifyResult.error || "Contactless payment declined or canceled.",
-      };
+      return this.resolveVerification(verifyResult, onProgress);
     } catch (err: unknown) {
       // In case of network drop or app backgrounding during contactless presentation:
       this.setState("PAYMENT_UNKNOWN");
@@ -269,14 +305,57 @@ export class TapToPayIPhoneAdapter {
     }
   }
 
+  private resolveVerification(
+    verifyResult: IVerifyPaymentStatusResponse,
+    onProgress?: (step: TapToPayOperationalState) => void
+  ): IVerifyPaymentStatusResponse {
+    if (verifyResult.isUnknown || verifyResult.status === "UNKNOWN") {
+      this.setState("PAYMENT_UNKNOWN");
+      if (onProgress) onProgress("PAYMENT_UNKNOWN");
+      return {
+        ok: false,
+        status: "UNKNOWN",
+        paymentAttemptStatus: "UNKNOWN",
+        posPaymentStatus: "UNKNOWN",
+        isUnknown: true,
+        error: "Tap to Pay transaction status is ambiguous. Verifying with Stripe server...",
+      };
+    }
+
+    if (verifyResult.ok && (verifyResult.status === "SUCCEEDED" || verifyResult.posPaymentStatus === "PAID")) {
+      this.setState("PAYMENT_SUCCEEDED");
+      if (onProgress) onProgress("PAYMENT_SUCCEEDED");
+      return verifyResult;
+    }
+
+    this.setState("PAYMENT_FAILED");
+    if (onProgress) onProgress("PAYMENT_FAILED");
+    return {
+      ok: false,
+      status: "FAILED",
+      paymentAttemptStatus: verifyResult.paymentAttemptStatus || "FAILED",
+      posPaymentStatus: verifyResult.posPaymentStatus || "FAILED",
+      error: verifyResult.error || "Contactless payment declined or canceled.",
+    };
+  }
+
   /**
    * Cancel in-flight payment intent
    */
   public async cancelPayment(paymentIntentId: string): Promise<boolean> {
     try {
-      const res = await this.apiClient.cancelStripePaymentIntent({ paymentIntentId });
+      const intent = await this.apiClient.verifyStripePaymentStatus({ paymentIntentId });
+      if (intent.status === "SUCCEEDED") return true;
+      const sdk = loadStripeTerminalNative()?.StripeTerminalSdk;
+      if (!sdk) return false;
+      const res = await sdk.cancelProcessPaymentIntent();
+      if (res.error) {
+        await this.apiClient.cancelStripePaymentIntent({ paymentIntentId });
+        this.setState("READY");
+        return false;
+      }
       this.setState("READY");
-      return res.ok;
+      return true;
     } catch {
       return false;
     }

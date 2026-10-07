@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from "react-native";
 import { IPAD_THEME } from "../../theme/tokens";
 import { ConnectivityBadge, type ConnectivityState } from "../ui/ConnectivityBadge";
 import { useCart } from "../../contexts/CartContext";
@@ -31,6 +31,8 @@ export function IPadHeader({
   onOpenMessages,
   unreadMessagesCount,
 }: IPadHeaderProps) {
+  const { width } = useWindowDimensions();
+  const isPhone = width < IPAD_THEME.breakpoints.compact;
   const { items, subtotal } = useCart();
   const { layoutMode, setLayoutMode } = usePosLayout();
 
@@ -55,7 +57,7 @@ export function IPadHeader({
 
       <View style={styles.rightSection}>
         {/* POS Mode Switcher (Visible on Point of Sale) */}
-        {title === "Point of Sale" && (
+        {title === "Point of Sale" && !isPhone && (
           <View style={styles.modeSwitcherContainer}>
             <TouchableOpacity
               style={[styles.modeBtn, layoutMode === "apple_touch" && styles.modeBtnActive]}
@@ -85,9 +87,9 @@ export function IPadHeader({
 
         <ConnectivityBadge state={connectivityState} onRetry={onRetryConnection} />
 
-        <View style={styles.hardwareBadge}>
+        {!isPhone && <View style={styles.hardwareBadge}>
           <Text style={styles.hardwareText}>📷 {scannerStatus}</Text>
-        </View>
+        </View>}
 
         {onOpenMessages && (
           <TouchableOpacity
@@ -138,6 +140,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: IPAD_THEME.spacing.md,
+    flex: 1,
+    minWidth: 0,
   },
   sidebarToggle: {
     width: 36,
@@ -154,12 +158,14 @@ const styles = StyleSheet.create({
   },
   titleContainer: {
     justifyContent: "center",
+    flexShrink: 1,
   },
   title: {
     color: IPAD_THEME.colors.textPrimary,
     fontSize: 18,
     fontWeight: "800",
     letterSpacing: 0.3,
+    flexShrink: 1,
   },
   subtitle: {
     color: IPAD_THEME.colors.textMuted,
@@ -169,6 +175,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: IPAD_THEME.spacing.md,
+    flexShrink: 0,
   },
   hardwareBadge: {
     paddingHorizontal: IPAD_THEME.spacing.sm,

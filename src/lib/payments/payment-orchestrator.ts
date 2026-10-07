@@ -55,8 +55,9 @@ export class PaymentOrchestrator {
     organizationId: string;
     userId: string;
     posDeviceId?: string;
+    locationId?: string;
   }): Promise<{ secret: string }> {
-    const { organizationId, userId, posDeviceId } = params;
+    const { organizationId, userId, posDeviceId, locationId } = params;
 
     // Verify tenant organization
     const org = await this.db.organization.findUnique({
@@ -76,14 +77,14 @@ export class PaymentOrchestrator {
       });
     }
 
-    const result = await this.stripeAdapter.createConnectionToken();
+    const result = await this.stripeAdapter.createConnectionToken(locationId);
 
     await logAudit({
       organizationId,
       actorUserId: userId,
       action: "create",
       entity: "stripe_connection_token",
-      meta: { posDeviceId },
+      meta: { posDeviceId, locationId },
     });
 
     return result;

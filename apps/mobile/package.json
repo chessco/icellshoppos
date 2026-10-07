@@ -17,6 +17,7 @@
     "@ireader/api-client": "*",
     "@ireader/application": "*",
     "@ireader/contracts": "*",
+    "@stripe/stripe-terminal-react-native": "0.0.1-beta.33",
     "expo": "~57.0.22",
     "expo-camera": "~57.0.5",
     "expo-dev-client": "~57.0.19",

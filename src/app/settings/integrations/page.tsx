@@ -42,6 +42,37 @@ export default function IntegrationsPage() {
     accountId?: string;
   } | null>(null);
 
+  // Stripe Terminal Management State
+  const [locations, setLocations] = useState<Array<{ id: string; displayName: string; address: any }>>([]);
+  const [loadingLocations, setLoadingLocations] = useState(false);
+  const [creatingLocation, setCreatingLocation] = useState(false);
+
+  const [readers, setReaders] = useState<Array<{
+    id: string;
+    label: string | null;
+    deviceType: string;
+    serialNumber: string;
+    status: string;
+    location: string | null;
+    ipAddress?: string;
+  }>>([]);
+  const [loadingReaders, setLoadingReaders] = useState(false);
+  const [registrationCodeInput, setRegistrationCodeInput] = useState("");
+  const [readerLabelInput, setReaderLabelInput] = useState("");
+  const [registeringReader, setRegisteringReader] = useState(false);
+  const [readerActionMessage, setReaderActionMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Live Test Charge State
+  const [testChargeAmount, setTestChargeAmount] = useState("10");
+  const [testingCharge, setTestingCharge] = useState(false);
+  const [chargeTestResult, setChargeTestResult] = useState<{
+    success: boolean;
+    message?: string;
+    error?: string;
+    dashboardUrl?: string;
+    paymentIntent?: { id: string; amount: number; currency: string; status: string; dashboardUrl?: string };
+  } | null>(null);
+
   useEffect(() => {
     fetchSettings();
   }, []);
@@ -120,6 +151,161 @@ export default function IntegrationsPage() {
       });
     } finally {
       setTestingStripe(false);
+    }
+  };
+
+  const handleFetchLocations = async () => {
+    setLoadingLocations(true);
+    try {
+      const res = await fetch("/api/settings/integrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "list_stripe_locations",
+          stripe_secret_key: settings.stripe_secret_key,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setLocations(data.locations || []);
+        if (data.locations?.length > 0 && !settings.stripe_location_id) {
+          setSettings((prev) => ({ ...prev, stripe_location_id: data.locations[0].id }));
+        }
+      } else {
+        alert(data.error || "No se pudieron obtener las ubicaciones.");
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingLocations(false);
+    }
+  };
+
+  const handleCreateDefaultLocation = async () => {
+    setCreatingLocation(true);
+    try {
+      const res = await fetch("/api/settings/integrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create_stripe_location",
+          displayName: "Sucursal Principal iCellShop",
+          saveAsDefault: true,
+          stripe_secret_key: settings.stripe_secret_key,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSettings((prev) => ({ ...prev, stripe_location_id: data.location.id }));
+        setLocations((prev) => [data.location, ...prev]);
+        alert(`Ubicación creada con éxito: ${data.location.displayName} (${data.location.id})`);
+      } else {
+        alert(data.error || "Error al crear ubicación.");
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setCreatingLocation(false);
+    }
+  };
+
+  const handleFetchReaders = async () => {
+    setLoadingReaders(true);
+    try {
+      const res = await fetch("/api/settings/integrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "list_stripe_readers",
+          locationId: settings.stripe_location_id || undefined,
+          stripe_secret_key: settings.stripe_secret_key,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setReaders(data.readers || []);
+      } else {
+        alert(data.error || "No se pudieron obtener los lectores.");
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingReaders(false);
+    }
+  };
+
+  const handleRegisterReader = async (codeOverride?: string, labelOverride?: string) => {
+    const code = codeOverride || registrationCodeInput.trim();
+    const label = labelOverride || readerLabelInput.trim() || "Terminal de Mostrador";
+    if (!code) {
+      alert("Por favor ingresa un código de registro.");
+      return;
+    }
+    setRegisteringReader(true);
+    setReaderActionMessage(null);
+    try {
+      const res = await fetch("/api/settings/integrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "register_stripe_reader",
+          registrationCode: code,
+          label,
+          locationId: settings.stripe_location_id || undefined,
+          stripe_secret_key: settings.stripe_secret_key,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setReaderActionMessage({
+          type: "success",
+          text: `¡Lector registrado con éxito! ${data.reader.label} (${data.reader.serialNumber})`,
+        });
+        setRegistrationCodeInput("");
+        setReaderLabelInput("");
+        void handleFetchReaders();
+      } else {
+        setReaderActionMessage({
+          type: "error",
+          text: data.error || "No se pudo registrar el lector en Stripe.",
+        });
+      }
+    } catch (e) {
+      setReaderActionMessage({ type: "error", text: "Error de conexión con el servidor." });
+    } finally {
+      setRegisteringReader(false);
+    }
+  };
+
+  const handleTestCharge = async () => {
+    setTestingCharge(true);
+    setChargeTestResult(null);
+    try {
+      const res = await fetch("/api/settings/integrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "test_stripe_charge",
+          amount: testChargeAmount,
+          stripe_secret_key: settings.stripe_secret_key,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setChargeTestResult(data);
+      } else {
+        setChargeTestResult({
+          success: false,
+          error: data.error || "No se pudo generar el cobro de prueba en Stripe.",
+        });
+      }
+    } catch (e) {
+      setChargeTestResult({
+        success: false,
+        error: "Error de conexión al ejecutar cobro de prueba.",
+      });
+    } finally {
+      setTestingCharge(false);
     }
   };
 
@@ -389,6 +575,284 @@ export default function IntegrationsPage() {
                       )}
                     </div>
                   </form>
+
+                  {/* ─────────────────────────────────────────────────────────────
+                      SUB-PANEL 1: GESTIÓN DE UBICACIONES (STRIPE LOCATIONS)
+                  ───────────────────────────────────────────────────────────── */}
+                  <div className="mt-10 rounded-3xl border border-[#d6e4ff] bg-[#f8fbff] p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e2edff] pb-4">
+                      <div>
+                        <h3 className="text-sm font-black uppercase tracking-wider text-[#0f1f3d]">
+                          📍 Ubicaciones de Terminal (Stripe Locations)
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          Requeridas por Stripe para asociar lectores físicos (como Stripe M2 o S700) y cobros.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleFetchLocations}
+                          disabled={loadingLocations || !settings.stripe_secret_key}
+                          className="rounded-xl border border-indigo-200 bg-white px-3.5 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
+                        >
+                          {loadingLocations ? "Consultando..." : "🔍 Consultar Ubicaciones"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCreateDefaultLocation}
+                          disabled={creatingLocation || !settings.stripe_secret_key}
+                          className="rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                          {creatingLocation ? "Creando..." : "➕ Crear Ubicación en Stripe"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {locations.length > 0 ? (
+                      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {locations.map((loc) => {
+                          const isSelected = settings.stripe_location_id === loc.id;
+                          return (
+                            <div
+                              key={loc.id}
+                              onClick={() => setSettings((s) => ({ ...s, stripe_location_id: loc.id }))}
+                              className={`cursor-pointer rounded-2xl border p-4 transition-all ${
+                                isSelected
+                                  ? "border-indigo-600 bg-indigo-50/70 shadow-sm"
+                                  : "border-slate-200 bg-white hover:border-slate-300"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-[#0f1f3d]">{loc.displayName}</span>
+                                {isSelected && (
+                                  <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-bold text-white">
+                                    ✓ Seleccionada
+                                  </span>
+                                )}
+                              </div>
+                              <p className="mt-1 font-mono text-[11px] text-slate-500">{loc.id}</p>
+                              {loc.address && (
+                                <p className="mt-1 text-[11px] text-slate-400">
+                                  {loc.address.city}, {loc.address.country}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="mt-4 text-center text-xs text-slate-400">
+                        Presiona &quot;Consultar Ubicaciones&quot; para cargar las existentes o &quot;Crear Ubicación&quot; para registrar una nueva automáticamente.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* ─────────────────────────────────────────────────────────────
+                      SUB-PANEL 2: ENLACE Y GESTIÓN DE TERMINALES / LECTORES
+                  ───────────────────────────────────────────────────────────── */}
+                  <div className="mt-8 rounded-3xl border border-[#d6e4ff] bg-[#f8fbff] p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e2edff] pb-4">
+                      <div>
+                        <h3 className="text-sm font-black uppercase tracking-wider text-[#0f1f3d]">
+                          📟 Lectores y Terminales Registrados
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          Lectores vinculados a tu cuenta de Stripe para cobros en punto de venta.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleFetchReaders}
+                          disabled={loadingReaders || !settings.stripe_secret_key}
+                          className="rounded-xl border border-indigo-200 bg-white px-3.5 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
+                        >
+                          {loadingReaders ? "Buscando..." : "🔄 Actualizar Lista"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRegisterReader("simulated-wpos-1", "Lector Simulado WisePOS E")}
+                          disabled={registeringReader || !settings.stripe_secret_key}
+                          className="rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow hover:bg-emerald-700 disabled:opacity-50"
+                          title="Crea un lector de prueba oficial de Stripe para simular cobros"
+                        >
+                          {registeringReader ? "Registrando..." : "🧪 Crear Lector Simulado (WisePOS E)"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {readerActionMessage && (
+                      <div
+                        className={`mt-4 rounded-xl p-3 text-xs font-semibold ${
+                          readerActionMessage.type === "success"
+                            ? "border border-emerald-300 bg-emerald-50 text-emerald-800"
+                            : "border border-rose-300 bg-rose-50 text-rose-800"
+                        }`}
+                      >
+                        {readerActionMessage.text}
+                      </div>
+                    )}
+
+                    {/* Formulario de registro de Lector */}
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                      <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                        Registrar Nuevo Lector Físico / Smart Reader
+                      </p>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <input
+                          type="text"
+                          value={registrationCodeInput}
+                          onChange={(e) => setRegistrationCodeInput(e.target.value)}
+                          placeholder="Código de Registro (ej. quick-brown-fox o serial)"
+                          className="rounded-xl border border-slate-300 px-3 py-2 text-xs text-[#0f1f3d] outline-none focus:border-indigo-600"
+                        />
+                        <input
+                          type="text"
+                          value={readerLabelInput}
+                          onChange={(e) => setReaderLabelInput(e.target.value)}
+                          placeholder="Etiqueta (ej. Mostrador Caja 1)"
+                          className="rounded-xl border border-slate-300 px-3 py-2 text-xs text-[#0f1f3d] outline-none focus:border-indigo-600"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRegisterReader()}
+                          disabled={registeringReader || !registrationCodeInput.trim()}
+                          className="rounded-xl bg-[#0f1f3d] px-4 py-2 text-xs font-bold text-white hover:bg-indigo-600 disabled:opacity-50"
+                        >
+                          {registeringReader ? "Vinculando..." : "🔗 Enlazar Lector a Stripe"}
+                        </button>
+                      </div>
+                      <p className="mt-2 text-[10px] text-slate-400">
+                        Nota: Los lectores <strong>Stripe Reader M2</strong> se enlazan directamente por Bluetooth en el iPad. Los lectores inteligentes (WisePOS E / S700) muestran un código de registro en su pantalla táctil para enlazarlos aquí.
+                      </p>
+                    </div>
+
+                    {/* Lista de lectores */}
+                    {readers.length > 0 ? (
+                      <div className="mt-4 space-y-2">
+                        {readers.map((r) => (
+                          <div
+                            key={r.id}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="text-xl">
+                                {r.deviceType?.includes("wisepad") || r.deviceType?.includes("m2") ? "📱" : "📟"}
+                              </span>
+                              <div>
+                                <p className="text-xs font-bold text-[#0f1f3d]">
+                                  {r.label || r.deviceType} <span className="font-mono text-slate-400 font-normal">({r.serialNumber})</span>
+                                </p>
+                                <p className="text-[11px] text-slate-500">
+                                  Tipo: <span className="font-semibold text-slate-700">{r.deviceType}</span> • ID: <span className="font-mono">{r.id}</span>
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${
+                                  r.status === "online"
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : "bg-slate-100 text-slate-600"
+                                }`}
+                              >
+                                {r.status === "online" ? "🟢 En Línea" : "⚪ " + r.status}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-4 text-center text-xs text-slate-400">
+                        No hay lectores registrados en la lista actual. Presiona &quot;Actualizar Lista&quot; o crea un lector de prueba.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* ─────────────────────────────────────────────────────────────
+                      SUB-PANEL 3: SIMULADOR DE COBRO EN VIVO (TEST RUNNER)
+                  ───────────────────────────────────────────────────────────── */}
+                  <div className="mt-8 rounded-3xl border-2 border-indigo-200 bg-gradient-to-br from-indigo-50/50 via-white to-purple-50/40 p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-indigo-100 pb-4">
+                      <div>
+                        <h3 className="text-sm font-black uppercase tracking-wider text-indigo-950">
+                          ⚡ Simulador de Cobro en Vivo (Live Test Runner)
+                        </h3>
+                        <p className="text-xs text-slate-600">
+                          Prueba la creación de un cobro con Stripe Terminal desde esta misma página.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                      <div className="flex items-center gap-2 rounded-2xl border border-indigo-200 bg-white px-4 py-2.5 shadow-sm">
+                        <span className="text-xs font-bold text-slate-500">Monto:</span>
+                        <span className="text-xs font-bold text-slate-900">$</span>
+                        <input
+                          type="number"
+                          value={testChargeAmount}
+                          onChange={(e) => setTestChargeAmount(e.target.value)}
+                          className="w-20 font-mono text-xs font-bold text-[#0f1f3d] outline-none"
+                          min="1"
+                        />
+                        <span className="text-xs font-bold text-slate-500">MXN</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleTestCharge}
+                        disabled={testingCharge || !settings.stripe_secret_key}
+                        className="flex items-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3 text-xs font-black uppercase tracking-wider text-white shadow-md hover:bg-indigo-700 active:scale-95 disabled:opacity-50"
+                      >
+                        {testingCharge ? (
+                          <>
+                            <div className="size-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                            <span>Procesando en Stripe...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>💳 Ejecutar Cobro de Prueba</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {chargeTestResult && (
+                      <div
+                        className={`mt-4 rounded-2xl border p-4 text-xs ${
+                          chargeTestResult.success
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                            : "border-rose-300 bg-rose-50 text-rose-900"
+                        }`}
+                      >
+                        {chargeTestResult.success ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 font-bold text-emerald-800 text-sm">
+                              <span>✅ {chargeTestResult.message}</span>
+                            </div>
+                            <div className="font-mono text-[11px] text-emerald-700">
+                              PaymentIntent ID: <strong>{chargeTestResult.paymentIntent?.id}</strong> | Estado: <strong>{chargeTestResult.paymentIntent?.status}</strong>
+                            </div>
+                            {chargeTestResult.paymentIntent?.dashboardUrl && (
+                              <a
+                                href={chargeTestResult.paymentIntent.dashboardUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+                              >
+                                <span>Ver Transacción en Stripe Dashboard ↗</span>
+                              </a>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="font-bold text-rose-700">
+                            ❌ {chargeTestResult.error}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 

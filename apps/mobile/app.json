@@ -23,7 +23,19 @@
         "com.apple.developer.proximity-reader.payment.acceptance": true
       }
     },
-    "plugins": [],
+    "plugins": [
+      [
+        "@stripe/stripe-terminal-react-native",
+        {
+          "bluetoothBackgroundMode": true,
+          "locationWhenInUsePermission": "iReader POS requiere tu ubicación para aceptar pagos con Stripe Terminal.",
+          "bluetoothPeripheralPermission": "iReader POS requiere Bluetooth para comunicarse con lectores Stripe.",
+          "bluetoothAlwaysUsagePermission": "iReader POS usa Bluetooth para lectores Stripe compatibles.",
+          "localNetworkUsagePermission": "iReader POS usa la red local para lectores Stripe compatibles.",
+          "tapToPayCheck": true
+        }
+      ]
+    ],
     "extra": {
       "eas": {
         "projectId": "3ad01e07-f5a2-4a86-bc2a-6ce315a5870c"

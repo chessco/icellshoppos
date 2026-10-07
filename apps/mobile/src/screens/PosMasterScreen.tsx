@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { View, useWindowDimensions, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, useWindowDimensions, StyleSheet } from "react-native";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
 import { usePosLayout } from "../contexts/PosLayoutContext";
@@ -37,6 +37,7 @@ export function PosMasterScreen({
   const { apiClient } = useAuth();
   const { items: cartItems, addItem, removeItem } = useCart();
   const { layoutMode } = usePosLayout();
+  const [mobilePanel, setMobilePanel] = useState<"catalog" | "ticket">("catalog");
 
   const [inventory, setInventory] = useState<IInventoryListItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<IInventoryListItem | null>(null);
@@ -161,14 +162,35 @@ export function PosMasterScreen({
   // we maintain full-height dual columns to prevent ticket compression.
   // Stacked mode is only reserved for ultra-compact phone screens (< 600px).
   const isTablet = width >= 600;
+  const isPhone = !isTablet;
 
   return (
     <View style={styles.container}>
+      {isPhone && (
+        <View style={styles.mobilePanelSwitcher}>
+          <TouchableOpacity
+            style={[styles.mobilePanelButton, mobilePanel === "catalog" && styles.mobilePanelButtonActive]}
+            onPress={() => setMobilePanel("catalog")}
+            accessibilityRole="button"
+            accessibilityLabel="Mostrar catálogo"
+          >
+            <Text style={[styles.mobilePanelButtonText, mobilePanel === "catalog" && styles.mobilePanelButtonTextActive]}>Catálogo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.mobilePanelButton, mobilePanel === "ticket" && styles.mobilePanelButtonActive]}
+            onPress={() => setMobilePanel("ticket")}
+            accessibilityRole="button"
+            accessibilityLabel={`Mostrar ticket de venta (${cartItems.length} artículos)`}
+          >
+            <Text style={[styles.mobilePanelButtonText, mobilePanel === "ticket" && styles.mobilePanelButtonTextActive]}>Ticket ({cartItems.length})</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       {layoutMode === "apple_touch" ? (
         /* ─────────────── APPLE TOUCH POS MODE ─────────────── */
         <View style={[styles.layout, !isTablet && styles.layoutStacked]}>
           {/* Left Column: Tactile Product Grid (58%) */}
-          <View style={styles.appleCatalogColumn}>
+          {(!isPhone || mobilePanel === "catalog") && <View style={styles.appleCatalogColumn}>
             <AppleTouchPosView
               items={inventory}
               isLoading={isLoading}
@@ -177,23 +199,23 @@ export function PosMasterScreen({
               onOpenScanner={() => setIsScannerOpen(true)}
               onOpenMessages={() => onOpenMessages?.()}
             />
-          </View>
+          </View>}
 
           {/* Right Column: Apple Live Receipt Ticket (42%) */}
-          <View style={styles.appleTicketColumn}>
+          {(!isPhone || mobilePanel === "ticket") && <View style={styles.appleTicketColumn}>
             <AppleReceiptTicket
               onProceedCheckout={() => setViewMode("checkout")}
               onOpenCustomerSelect={() => setIsCustomerModalOpen(true)}
               onOpenScanner={() => setIsScannerOpen(true)}
               onOpenWhatsApp={(phone, name) => onOpenMessages?.(phone, name)}
             />
-          </View>
+          </View>}
         </View>
       ) : (
         /* ─────────────── CLASSIC WEB CATALOG MODE ─────────────── */
         <View style={[styles.layout, !isTablet && styles.layoutStacked]}>
           {/* Left Column: Product Catalog & Search */}
-          <View style={styles.catalogColumn}>
+          {(!isPhone || mobilePanel === "catalog") && <View style={styles.catalogColumn}>
             <CatalogGrid
               items={inventory}
               selectedItem={selectedItem}
@@ -208,10 +230,10 @@ export function PosMasterScreen({
               searchQuery={catalogSearch}
               onSearchQueryChange={setCatalogSearch}
             />
-          </View>
+          </View>}
 
           {/* Right Column: Cart / Product Detail Drawer */}
-          <View style={styles.rightColumn}>
+          {(!isPhone || mobilePanel === "ticket") && <View style={styles.rightColumn}>
             {activeRightTab === "detail" && selectedItem ? (
               <View style={styles.detailWrapper}>
                 <ProductDetailPane
@@ -226,7 +248,7 @@ export function PosMasterScreen({
                 onOpenCustomerSelect={() => setIsCustomerModalOpen(true)}
               />
             )}
-          </View>
+          </View>}
         </View>
       )}
 
@@ -289,5 +311,32 @@ const styles = StyleSheet.create({
   },
   detailWrapper: {
     flex: 1,
+  },
+  mobilePanelSwitcher: {
+    flexDirection: "row",
+    padding: IPAD_THEME.spacing.sm,
+    gap: IPAD_THEME.spacing.sm,
+    backgroundColor: IPAD_THEME.colors.surfacePrimary,
+    borderBottomWidth: 1,
+    borderBottomColor: IPAD_THEME.colors.borderSubtle,
+  },
+  mobilePanelButton: {
+    flex: 1,
+    minHeight: IPAD_THEME.touchTarget.minHeight,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: IPAD_THEME.radius.md,
+    backgroundColor: IPAD_THEME.colors.surfaceSecondary,
+  },
+  mobilePanelButtonActive: {
+    backgroundColor: IPAD_THEME.colors.accent,
+  },
+  mobilePanelButtonText: {
+    color: IPAD_THEME.colors.textSecondary,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  mobilePanelButtonTextActive: {
+    color: IPAD_THEME.colors.background,
   },
 });

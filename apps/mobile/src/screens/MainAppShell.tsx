@@ -36,9 +36,9 @@ export function MainAppShell() {
   const isPortrait = width < IPAD_THEME.breakpoints.regular;
 
   const [currentTab, setCurrentTab] = useState<NavigationDestination>("pos");
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
-    width < IPAD_THEME.breakpoints.wide
-  );
+  // Landscape iPad starts expanded so navigation labels are visible. The
+  // hamburger remains available to collapse the fixed-width sidebar.
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isMessagesOpen, setIsMessagesOpen] = useState(false);
   const [messagesInitialPhone, setMessagesInitialPhone] = useState<string | undefined>(undefined);
@@ -70,7 +70,9 @@ export function MainAppShell() {
 
   // Adjust sidebar state on screen rotation / resizing
   useEffect(() => {
-    if (!isPortrait) {
+    if (isPortrait) {
+      setIsSidebarCollapsed(false);
+    } else {
       setIsDrawerOpen(false);
     }
   }, [isPortrait]);
