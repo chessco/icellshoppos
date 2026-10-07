@@ -22,7 +22,8 @@
     "mobile:go": "npm --prefix apps/mobile run go",
     "mobile:ios": "npm --prefix apps/mobile run ios",
     "mobile:android": "npm --prefix apps/mobile run android",
-    "mobile:test": "node --test apps/mobile/test/mobile-capabilities.test.ts"
+    "mobile:test": "node --test apps/mobile/test/mobile-capabilities.test.ts",
+    "test:ipad-reader": "tsx --test test/ipad-terminal-reader-simulation.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.16.0",
