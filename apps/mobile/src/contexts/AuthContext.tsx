@@ -21,7 +21,6 @@ interface AuthContextValue {
   setBaseUrl: (url: string) => void;
   isLoading: boolean;
   isRestoringSession: boolean;
-  savedPassword: string;
   requires2FA: boolean;
   setRequires2FA: (val: boolean) => void;
   loginError: string | null;
@@ -40,7 +39,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   const [isRestoringSession, setIsRestoringSession] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [savedPassword, setSavedPassword] = useState<string>("");
   const [requires2FA, setRequires2FA] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
@@ -142,10 +140,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     setLoginError(null);
     try {
-      const effectivePassword = pass || savedPassword || pendingPasswordRef.current;
+      const effectivePassword = pass || pendingPasswordRef.current;
       if (pass) {
         pendingPasswordRef.current = pass;
-        setSavedPassword(pass);
       }
 
       const res = await apiClient.login({
@@ -171,7 +168,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       pendingPasswordRef.current = "";
-      setSavedPassword("");
 
       // Extract session token from JSON or cookie header
       const setCookie = res.rawHeaders?.get("set-cookie") || "";
@@ -206,7 +202,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(null);
     setCurrentToken(null);
     setRequires2FA(false);
-    setSavedPassword("");
     pendingPasswordRef.current = "";
     await storage.removeItem("auth_token");
   };
@@ -221,7 +216,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setBaseUrl,
         isLoading,
         isRestoringSession,
-        savedPassword,
         requires2FA,
         setRequires2FA,
         loginError,

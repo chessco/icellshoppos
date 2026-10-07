@@ -139,6 +139,10 @@ export function TerminalProvider({ children }: { children: React.ReactNode }) {
     return new TapToPayIPhoneAdapter(apiClient);
   }, [apiClient]);
 
+  useEffect(() => {
+    tapToPayAdapter.setSiteId(capabilities.stripeLocationId || undefined);
+  }, [tapToPayAdapter, capabilities.stripeLocationId]);
+
   // Subscribe to Stripe Reader adapter state events
   useEffect(() => {
     const unsubscribe = stripeAdapter.addListener({
@@ -180,7 +184,9 @@ export function TerminalProvider({ children }: { children: React.ReactNode }) {
 
   const isStripeEnabled = Boolean(capabilities.stripeReaderEnabled);
   const isTapToPayEnabled = Boolean(capabilities.stripeTapToPayEnabled);
-  const isTapToPayEligible = Boolean(isIPhone && isTapToPayEnabled);
+  const isTapToPayEligible = Boolean(
+    isIPhone && isTapToPayEnabled && tapToPayAdapter.checkEligibility().supported
+  );
 
   const discoverReaders = useCallback(async () => {
     if (!isStripeEnabled) return [];

@@ -13,19 +13,13 @@ import { useAuth } from "../contexts/AuthContext";
 import { IPAD_THEME } from "../theme/tokens";
 
 export function LoginScreen() {
-  const { login, isLoading, requires2FA, setRequires2FA, loginError, baseUrl, setBaseUrl, savedPassword } = useAuth();
-  const [email, setEmail] = useState("arturo.dltv@gmail.com");
-  const [password, setPassword] = useState(savedPassword || "");
+  const { login, isLoading, requires2FA, setRequires2FA, loginError, baseUrl, setBaseUrl } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [showConfig, setShowConfig] = useState(false);
   const [tempUrl, setTempUrl] = useState(baseUrl);
   const [localError, setLocalError] = useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (savedPassword && !password) {
-      setPassword(savedPassword);
-    }
-  }, [savedPassword, password]);
 
   React.useEffect(() => {
     if (baseUrl) {
@@ -39,8 +33,7 @@ export function LoginScreen() {
       setLocalError("Please enter your email.");
       return;
     }
-    const effectivePassword = password || savedPassword;
-    if (!effectivePassword) {
+    if (!password) {
       setLocalError("Please enter your password.");
       return;
     }
@@ -48,7 +41,7 @@ export function LoginScreen() {
       setLocalError("Please enter the 6-digit verification code sent to your email.");
       return;
     }
-    await login(email.trim(), effectivePassword, requires2FA ? code.trim() : undefined);
+    await login(email.trim(), password, requires2FA ? code.trim() : undefined);
   };
 
   return (
@@ -94,7 +87,7 @@ export function LoginScreen() {
               styles.input,
               requires2FA ? { backgroundColor: "#f8fafc", opacity: 0.9 } : null,
             ]}
-            value={password || savedPassword}
+            value={password}
             onChangeText={(val) => {
               setPassword(val);
               setLocalError(null);
@@ -102,6 +95,8 @@ export function LoginScreen() {
             placeholder="••••••••"
             placeholderTextColor={IPAD_THEME.colors.textMuted}
             secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
             accessibilityLabel="Password"
           />
         </View>
