@@ -60,7 +60,20 @@ export async function POST(request: NextRequest) {
       cartContext,
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ok: result.success,
+      success: result.success,
+      paymentIntentId: result.stripePaymentIntentId,
+      stripePaymentIntentId: result.stripePaymentIntentId,
+      clientSecret: result.clientSecret,
+      posPaymentId: result.posPaymentId,
+      paymentAttemptId: result.paymentAttemptId,
+      amount: result.amount,
+      currency: result.currency,
+      status: result.status,
+      channel: result.channel,
+      idempotentReplay: result.idempotentReplay,
+    });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

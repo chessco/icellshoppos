@@ -388,10 +388,15 @@ export class ProBuyerApiClient {
         amount: payload.amount,
         currency: payload.currency || "mxn",
         status: "FAILED",
-        error: res.error || "Failed to initialize Stripe payment intent on server.",
+        error: res.error || "No se pudo iniciar el cobro con Stripe en el servidor.",
       };
     }
-    return res.data;
+    const d = res.data as any;
+    return {
+      ...d,
+      ok: Boolean(d.ok ?? d.success ?? true),
+      paymentIntentId: d.paymentIntentId || d.stripePaymentIntentId || "",
+    };
   }
 
   async verifyStripePaymentStatus(payload: IVerifyPaymentStatusPayload): Promise<IVerifyPaymentStatusResponse> {
@@ -409,7 +414,12 @@ export class ProBuyerApiClient {
         error: res.error || "Failed to reach server to verify payment status.",
       };
     }
-    return res.data;
+    const d = res.data as any;
+    return {
+      ...d,
+      ok: Boolean(d.ok ?? d.success ?? true),
+      status: d.status || d.posPaymentStatus || "UNKNOWN",
+    };
   }
 
   async cancelStripePaymentIntent(payload: { paymentIntentId: string; reason?: string }): Promise<{ ok: boolean; error?: string }> {

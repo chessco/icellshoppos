@@ -25,7 +25,25 @@ export async function POST(request: NextRequest) {
       posPaymentId: posPaymentId ? String(posPaymentId).trim() : undefined,
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ok: result.success,
+      success: result.success,
+      status: result.status,
+      posPaymentStatus: result.status,
+      paymentAttemptStatus: result.attemptStatus,
+      paymentIntentId: result.stripePaymentIntentId,
+      stripePaymentIntentId: result.stripePaymentIntentId,
+      posPaymentId: result.posPaymentId,
+      paymentAttemptId: result.paymentAttemptId,
+      amount: result.amount,
+      currency: result.currency,
+      cardBrand: result.cardBrand,
+      cardLast4: result.cardLast4,
+      cardEntryMethod: result.cardEntryMethod,
+      isOrphan: result.isOrphan,
+      saleId: result.saleId,
+      message: result.message,
+    });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

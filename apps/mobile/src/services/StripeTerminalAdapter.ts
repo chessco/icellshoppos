@@ -263,7 +263,7 @@ export class StripeTerminalAdapter {
       if (onProgress) onProgress("VERIFYING");
 
       const verifyResult = await this.apiClient.verifyStripePaymentStatus({
-        paymentIntentId: intent.paymentIntentId,
+        paymentIntentId: intent.paymentIntentId || (intent as any).stripePaymentIntentId,
         paymentAttemptId: intent.paymentAttemptId,
       });
 

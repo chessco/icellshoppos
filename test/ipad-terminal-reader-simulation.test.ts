@@ -280,7 +280,7 @@ test("iPad POS Terminal Reader - Complete Automated Simulation Suite", async (t)
     });
 
     assert.ok(session.id, "Stripe Checkout session ID must be generated");
-    assert.ok(session.url.includes("checkout.stripe.com"), "Must provide hosted checkout URL");
+    assert.ok(session.url?.includes("checkout.stripe.com"), "Must provide hosted checkout URL");
     assert.strictEqual(session.amount_total, 35000);
   });
 

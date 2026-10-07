@@ -366,11 +366,14 @@ export function CheckoutSheet({
           customerPhone: phoneNorm.normalized,
         });
 
-        if (!intentRes.ok || !intentRes.paymentIntentId) {
+        const isOk = Boolean(intentRes.ok || (intentRes as any).success);
+        const piId = intentRes.paymentIntentId || (intentRes as any).stripePaymentIntentId;
+
+        if (!isOk || !piId) {
           throw new Error(intentRes.error || "No se pudo iniciar el cobro con Tap to Pay en el servidor.");
         }
 
-        setLastPaymentIntentId(intentRes.paymentIntentId);
+        setLastPaymentIntentId(piId);
 
         // 2. Terminal SDK executes contactless Tap to Pay collection & processPayment & backend verification
         const terminalResult = await collectAndProcessTapToPayPayment(intentRes, (step) => {
@@ -515,11 +518,14 @@ export function CheckoutSheet({
           customerPhone: phoneNorm.normalized,
         });
 
-        if (!intentRes.ok || !intentRes.paymentIntentId) {
+        const isOk = Boolean(intentRes.ok || (intentRes as any).success);
+        const piId = intentRes.paymentIntentId || (intentRes as any).stripePaymentIntentId;
+
+        if (!isOk || !piId) {
           throw new Error(intentRes.error || "No se pudo iniciar el cobro con Stripe en el servidor.");
         }
 
-        setLastPaymentIntentId(intentRes.paymentIntentId);
+        setLastPaymentIntentId(piId);
 
         // 2. Terminal SDK executes collectPaymentMethod & processPayment & authoritative verification
         const terminalResult = await collectAndProcessCardPayment(intentRes, (step) => {
