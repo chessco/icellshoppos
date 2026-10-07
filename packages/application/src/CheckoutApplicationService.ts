@@ -91,5 +91,16 @@ export class CheckoutApplicationService {
   async cancelStripePayment(paymentIntentId: string, reason?: string): Promise<{ ok: boolean; error?: string }> {
     return this.apiClient.cancelStripePaymentIntent({ paymentIntentId, reason });
   }
+
+  async createStripeCheckoutSession(payload: {
+    amount: number;
+    currency?: string;
+    saleId?: string;
+    customerEmail?: string;
+    customerName?: string;
+    description?: string;
+  }): Promise<{ ok: boolean; checkoutUrl?: string; qrCodeUrl?: string; sessionId?: string; error?: string }> {
+    return this.apiClient.createStripeCheckoutSession(payload);
+  }
 }
 

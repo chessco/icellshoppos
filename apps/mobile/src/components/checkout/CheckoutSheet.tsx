@@ -7,6 +7,8 @@ import {
   ScrollView,
   StyleSheet,
   ActivityIndicator,
+  Image,
+  Linking,
 } from "react-native";
 import { useAuth } from "../../contexts/AuthContext";
 import { useCart } from "../../contexts/CartContext";
@@ -139,7 +141,10 @@ export function CheckoutSheet({
   const [terminalStep, setTerminalStep] = useState<StripeTerminalOperationalState | null>(null);
   const [isUnknownState, setIsUnknownState] = useState(false);
   const [lastPaymentIntentId, setLastPaymentIntentId] = useState<string | null>(null);
-  const [cardMode, setCardMode] = useState<"terminal" | "manual">("terminal");
+  const [cardMode, setCardMode] = useState<"terminal" | "stripe_link" | "manual">("terminal");
+  const [stripeCheckoutUrl, setStripeCheckoutUrl] = useState<string | null>(null);
+  const [stripeQrCodeUrl, setStripeQrCodeUrl] = useState<string | null>(null);
+  const [isGeneratingLink, setIsGeneratingLink] = useState(false);
 
   // Fetch available target iPhones when selecting Card_Handoff on iPad
   useEffect(() => {
@@ -159,6 +164,31 @@ export function CheckoutSheet({
   );
 
   const printerService = useMemo(() => new MobilePrinterService(), []);
+
+  const handleGenerateStripeLink = async () => {
+    setErrorMessage(null);
+    setIsGeneratingLink(true);
+    try {
+      const res = await checkoutService.createStripeCheckoutSession({
+        amount: totalPreview,
+        currency: capabilities.currency || "mxn",
+        saleId: checkoutIdRef.current,
+        customerEmail: customerEmail.trim().toLowerCase() || undefined,
+        customerName: customerName.trim() || undefined,
+        description: `Venta POS #${checkoutIdRef.current.substring(0, 8)}`,
+      });
+      if (res.ok && res.checkoutUrl) {
+        setStripeCheckoutUrl(res.checkoutUrl);
+        setStripeQrCodeUrl(res.qrCodeUrl || null);
+      } else {
+        setErrorMessage(res.error || "No se pudo generar el enlace de pago de Stripe.");
+      }
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : "Error al conectar con Stripe.");
+    } finally {
+      setIsGeneratingLink(false);
+    }
+  };
 
   // Reader Discovery Handler for Card / Stripe
   const handleScanReaders = async () => {
@@ -528,9 +558,13 @@ export function CheckoutSheet({
       return;
     }
 
-    // ─── STANDARD NON-STRIPE FLOW (Cash, Transfer, Credit, Other) ───────────
+    // ─── STANDARD NON-STRIPE FLOW (Cash, Transfer, Credit, Other, Manual Card, Stripe Link) ─
     try {
-      const saleRes = await finalizeBackendSale(paymentMethod);
+      const stripeRef =
+        paymentMethod === "Card" && cardMode === "stripe_link" && stripeCheckoutUrl
+          ? `Online Checkout: ${stripeCheckoutUrl}`
+          : undefined;
+      const saleRes = await finalizeBackendSale(paymentMethod, stripeRef);
       if (saleRes) {
         triggerSuccess(saleRes);
       }
@@ -787,7 +821,7 @@ export function CheckoutSheet({
               </View>
             )}
 
-            {/* Stripe Reader vs Manual Card Mode Selection (Shown on iPad when Card is active) */}
+            {/* Stripe Reader vs QR/Link vs Manual Card Mode Selection (Shown on iPad when Card is active) */}
             {paymentMethod === "Card" && !isIPhone && (
               <View style={styles.readerContainer}>
                 <View style={styles.cardModeToggleRow}>
@@ -807,7 +841,29 @@ export function CheckoutSheet({
                         cardMode === "terminal" && styles.cardModeBtnTextActive,
                       ]}
                     >
-                      💳 Lector Stripe (STRM2)
+                      💳 Lector STRM2
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.cardModeBtn,
+                      cardMode === "stripe_link" && styles.cardModeBtnActive,
+                    ]}
+                    onPress={() => {
+                      setCardMode("stripe_link");
+                      setErrorMessage(null);
+                      if (!stripeCheckoutUrl) {
+                        void handleGenerateStripeLink();
+                      }
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.cardModeBtnText,
+                        cardMode === "stripe_link" && styles.cardModeBtnTextActive,
+                      ]}
+                    >
+                      🌐 QR / Link Stripe
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -826,12 +882,12 @@ export function CheckoutSheet({
                         cardMode === "manual" && styles.cardModeBtnTextActive,
                       ]}
                     >
-                      🏦 Terminal Externa / Manual
+                      🏦 Terminal Externa
                     </Text>
                   </TouchableOpacity>
                 </View>
 
-                {cardMode === "manual" ? (
+                {cardMode === "manual" && (
                   <View style={styles.readerConnectedBox}>
                     <Text style={styles.readerConnectedText}>
                       🏦 Modo Registro Directo / Terminal Externa
@@ -840,7 +896,78 @@ export function CheckoutSheet({
                       Permite registrar la venta con tarjeta sin conectar el lector Stripe físico (ideal si cobraste en Clip, terminal bancaria o en línea).
                     </Text>
                   </View>
-                ) : (
+                )}
+
+                {cardMode === "stripe_link" && (
+                  <View style={styles.qrContainerBox}>
+                    <Text style={styles.qrBoxTitle}>🌐 Pago Online vía Stripe (Sin Terminal)</Text>
+                    <Text style={styles.qrBoxDesc}>
+                      El cliente puede pagar desde su celular con Apple Pay, Google Pay o introduciendo su tarjeta en la pasarela oficial de Stripe.
+                    </Text>
+
+                    {isGeneratingLink ? (
+                      <View style={{ paddingVertical: 24, alignItems: "center" }}>
+                        <ActivityIndicator size="large" color="#38bdf8" />
+                        <Text style={{ color: IPAD_THEME.colors.textSecondary, marginTop: 8, fontSize: 13 }}>
+                          Generando QR y Checkout seguro de Stripe...
+                        </Text>
+                      </View>
+                    ) : stripeQrCodeUrl ? (
+                      <View style={styles.qrCenterContent}>
+                        <Image
+                          source={{ uri: stripeQrCodeUrl }}
+                          style={styles.qrImage}
+                          resizeMode="contain"
+                        />
+                        <Text style={styles.qrScanPrompt}>
+                          📱 Apunte con la cámara del celular para pagar
+                        </Text>
+                        <View style={styles.qrActionsRow}>
+                          <TouchableOpacity
+                            style={styles.qrActionBtn}
+                            onPress={() => {
+                              if (stripeCheckoutUrl) {
+                                void Linking.openURL(stripeCheckoutUrl);
+                              }
+                            }}
+                          >
+                            <Text style={styles.qrActionBtnText}>🔗 Abrir Checkout</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.qrActionBtn, { backgroundColor: "#25D366" }]}
+                            onPress={() => {
+                              if (stripeCheckoutUrl) {
+                                const phoneClean = customerPhone.replace(/[^0-9]/g, "");
+                                const msg = `Hola! Aquí tienes tu enlace de pago seguro con tarjeta para tu compra de ${formatCurrency(
+                                  totalPreview
+                                )}: ${stripeCheckoutUrl}`;
+                                const waUrl = phoneClean
+                                  ? `https://wa.me/${phoneClean}?text=${encodeURIComponent(msg)}`
+                                  : `whatsapp://send?text=${encodeURIComponent(msg)}`;
+                                void Linking.openURL(waUrl);
+                              }
+                            }}
+                          >
+                            <Text style={[styles.qrActionBtnText, { color: "#ffffff" }]}>
+                              📲 Enviar por WhatsApp
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.generateLinkBtn}
+                        onPress={handleGenerateStripeLink}
+                      >
+                        <Text style={styles.generateLinkBtnText}>
+                          ⚡ Generar Enlace y Código QR ({formatCurrency(totalPreview)})
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+
+                {cardMode === "terminal" && (
                   <>
                     <View style={styles.readerHeaderRow}>
                       <Text style={styles.readerHeaderTitle}>Lector Stripe Terminal</Text>
@@ -867,7 +994,7 @@ export function CheckoutSheet({
                     ) : (
                       <View style={styles.readerDisconnectedBox}>
                         <Text style={styles.readerDisconnectedText}>
-                          ⚠️ Ningún lector conectado. Toque &quot;Buscar Lectores&quot; o elija &quot;Terminal Externa&quot;.
+                          ⚠️ Ningún lector conectado. Toque &quot;Buscar Lectores&quot; o elija &quot;QR / Link Stripe&quot;.
                         </Text>
                       </View>
                     )}
@@ -1389,6 +1516,78 @@ const styles = StyleSheet.create({
   },
   cardModeBtnTextActive: {
     color: "#38bdf8",
+    fontWeight: "900",
+  },
+  qrContainerBox: {
+    backgroundColor: "rgba(56, 189, 248, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.25)",
+    borderRadius: IPAD_THEME.radius.md,
+    padding: IPAD_THEME.spacing.md,
+  },
+  qrBoxTitle: {
+    color: "#38bdf8",
+    fontSize: 14,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+  qrBoxDesc: {
+    color: IPAD_THEME.colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
+    marginBottom: IPAD_THEME.spacing.sm,
+  },
+  qrCenterContent: {
+    alignItems: "center",
+    paddingVertical: IPAD_THEME.spacing.sm,
+  },
+  qrImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 12,
+    backgroundColor: "#ffffff",
+    padding: 8,
+  },
+  qrScanPrompt: {
+    color: IPAD_THEME.colors.textPrimary,
+    fontSize: 13,
+    fontWeight: "700",
+    marginTop: IPAD_THEME.spacing.sm,
+    marginBottom: IPAD_THEME.spacing.md,
+  },
+  qrActionsRow: {
+    flexDirection: "row",
+    gap: IPAD_THEME.spacing.sm,
+    width: "100%",
+  },
+  qrActionBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: IPAD_THEME.radius.md,
+    backgroundColor: "rgba(56, 189, 248, 0.18)",
+    borderWidth: 1,
+    borderColor: "#38bdf8",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  qrActionBtnText: {
+    color: "#38bdf8",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  generateLinkBtn: {
+    backgroundColor: "#38bdf8",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: IPAD_THEME.radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  generateLinkBtnText: {
+    color: "#0f172a",
+    fontSize: 13,
     fontWeight: "900",
   },
 });

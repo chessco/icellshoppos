@@ -420,6 +420,34 @@ export class ProBuyerApiClient {
     return { ok: res.ok, error: res.error };
   }
 
+  async createStripeCheckoutSession(payload: {
+    amount: number;
+    currency?: string;
+    saleId?: string;
+    customerEmail?: string;
+    customerName?: string;
+    description?: string;
+  }): Promise<{ ok: boolean; checkoutUrl?: string; qrCodeUrl?: string; sessionId?: string; error?: string }> {
+    const res = await this.request<{
+      ok: boolean;
+      sessionId: string;
+      checkoutUrl: string;
+      qrCodeUrl: string;
+    }>("/api/payments/stripe/create-checkout-session", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok || !res.data) {
+      return { ok: false, error: res.error || "No se pudo generar el enlace de pago de Stripe." };
+    }
+    return {
+      ok: true,
+      checkoutUrl: res.data.checkoutUrl,
+      qrCodeUrl: res.data.qrCodeUrl,
+      sessionId: res.data.sessionId,
+    };
+  }
+
   // ─── Cross-Device Payment Handoff (iPad <-> iPhone) ───────────────────────
   async createPaymentHandoff(payload: ICreateHandoffPayload & { siteId?: string }): Promise<ICreateHandoffResponse> {
     const res = await this.request<ICreateHandoffResponse>("/api/payments/handoffs", {

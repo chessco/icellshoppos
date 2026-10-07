@@ -36,6 +36,14 @@ export interface IStripePaymentAdapter {
     signature: string,
     secret?: string
   ): Stripe.Event;
+  createCheckoutSession(params: {
+    amountCents: number;
+    currency: string;
+    description: string;
+    organizationId: string;
+    customerEmail?: string;
+    metadata?: Record<string, string>;
+  }): Promise<Stripe.Checkout.Session>;
 }
 
 export class StripePaymentAdapter implements IStripePaymentAdapter {
@@ -152,6 +160,39 @@ export class StripePaymentAdapter implements IStripePaymentAdapter {
       "whsec_dummy_for_testing";
 
     return this.fallbackStripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+  }
+
+  async createCheckoutSession(params: {
+    amountCents: number;
+    currency: string;
+    description: string;
+    organizationId: string;
+    customerEmail?: string;
+    metadata?: Record<string, string>;
+  }): Promise<Stripe.Checkout.Session> {
+    const client = await this.getClient(params.organizationId);
+    const origin = process.env.NEXTAUTH_URL || "https://probuyer.pitayacode.io";
+
+    return await client.checkout.sessions.create({
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: params.currency.toLowerCase(),
+            product_data: {
+              name: params.description || "Cobro POS ProBuyer",
+            },
+            unit_amount: params.amountCents,
+          },
+          quantity: 1,
+        },
+      ],
+      mode: "payment",
+      customer_email: params.customerEmail || undefined,
+      success_url: `${origin}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/payment-cancel`,
+      metadata: params.metadata,
+    });
   }
 }
 
