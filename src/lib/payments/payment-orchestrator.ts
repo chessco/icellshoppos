@@ -160,46 +160,45 @@ export class PaymentOrchestrator {
 
     const money = validateChargeAmount(authoritativeAmount, currency);
 
-    // 3. If attached to a Sale, validate split payment limits
+    // 3. If attached to an existing Sale, validate split payment limits
+    let validSaleId: string | null = null;
     if (saleId) {
       const sale = await this.db.sale.findFirst({
         where: { id: saleId, organizationId },
         include: { posPayments: true },
       });
 
-      if (!sale) {
-        throw new PaymentValidationError(
-          `Sale with ID "${saleId}" not found in this organization.`,
-          "SALE_NOT_FOUND"
-        );
+      if (sale) {
+        validSaleId = sale.id;
+        validateSplitPayments(Number(sale.total), sale.posPayments, money.decimalAmount);
       }
-
-      validateSplitPayments(Number(sale.total), sale.posPayments, money.decimalAmount);
     }
 
     // 4. Verify POS Device belongs to tenant if provided
+    let validPosDeviceId: string | null = null;
     if (posDeviceId) {
       const device = await this.db.pOSDevice.findFirst({
-        where: { id: posDeviceId, organizationId },
+        where: {
+          organizationId,
+          OR: [{ id: posDeviceId }, { deviceUuid: posDeviceId }],
+        },
       });
-      if (!device) {
-        throw new PaymentValidationError(
-          `POS device "${posDeviceId}" does not belong to this organization.`,
-          "DEVICE_ORG_MISMATCH"
-        );
+      if (device) {
+        validPosDeviceId = device.id;
       }
     }
 
     // 5. Verify Stripe Reader belongs to tenant if provided
+    let validStripeReaderId: string | null = null;
     if (stripeReaderId) {
       const reader = await this.db.stripeReader.findFirst({
-        where: { id: stripeReaderId, organizationId },
+        where: {
+          organizationId,
+          OR: [{ id: stripeReaderId }, { stripeReaderId }, { serialNumber: stripeReaderId }],
+        },
       });
-      if (!reader) {
-        throw new PaymentValidationError(
-          `Stripe reader "${stripeReaderId}" does not belong to this organization.`,
-          "READER_ORG_MISMATCH"
-        );
+      if (reader) {
+        validStripeReaderId = reader.id;
       }
     }
 
@@ -211,8 +210,8 @@ export class PaymentOrchestrator {
       posPayment = await this.db.posPayment.create({
         data: {
           organizationId,
-          saleId: saleId || null,
-          posDeviceId: posDeviceId || null,
+          saleId: validSaleId,
+          posDeviceId: validPosDeviceId,
           paymentMethod: PosPaymentMethod.CARD,
           paymentChannel: channel,
           amount: money.decimalAmount,
