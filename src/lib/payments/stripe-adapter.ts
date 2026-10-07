@@ -13,11 +13,11 @@
  */
 
 import Stripe from "stripe";
-import { stripe as defaultStripeClient } from "@/lib/stripe";
+import { stripe as defaultStripeClient, getStripeForOrg } from "@/lib/stripe";
 import { StripeMetadataPayload } from "./types";
 
 export interface IStripePaymentAdapter {
-  createConnectionToken(locationId?: string): Promise<{ secret: string }>;
+  createConnectionToken(locationId?: string, organizationId?: string): Promise<{ secret: string }>;
   createPaymentIntent(params: {
     amountCents: number;
     currency: string;
@@ -25,8 +25,12 @@ export interface IStripePaymentAdapter {
     idempotencyKey: string;
     description?: string;
   }): Promise<Stripe.PaymentIntent>;
-  retrievePaymentIntent(paymentIntentId: string): Promise<Stripe.PaymentIntent>;
-  cancelPaymentIntent(paymentIntentId: string, reason?: string): Promise<Stripe.PaymentIntent>;
+  retrievePaymentIntent(paymentIntentId: string, organizationId?: string): Promise<Stripe.PaymentIntent>;
+  cancelPaymentIntent(
+    paymentIntentId: string,
+    reason?: string,
+    organizationId?: string
+  ): Promise<Stripe.PaymentIntent>;
   constructWebhookEvent(
     rawBody: string | Buffer,
     signature: string,
@@ -35,17 +39,25 @@ export interface IStripePaymentAdapter {
 }
 
 export class StripePaymentAdapter implements IStripePaymentAdapter {
-  constructor(private readonly stripe: Stripe = defaultStripeClient) {}
+  constructor(private readonly fallbackStripe: Stripe = defaultStripeClient) {}
+
+  private async getClient(organizationId?: string): Promise<Stripe> {
+    if (organizationId) {
+      return await getStripeForOrg(organizationId);
+    }
+    return this.fallbackStripe;
+  }
 
   /**
    * Generates a short-lived Connection Token for the mobile Stripe Terminal SDK
    */
-  async createConnectionToken(locationId?: string): Promise<{ secret: string }> {
+  async createConnectionToken(locationId?: string, organizationId?: string): Promise<{ secret: string }> {
+    const client = await this.getClient(organizationId);
     const params: Stripe.Terminal.ConnectionTokenCreateParams = {};
     if (locationId) {
       params.location = locationId;
     }
-    const token = await this.stripe.terminal.connectionTokens.create(params);
+    const token = await client.terminal.connectionTokens.create(params);
     return { secret: token.secret };
   }
 
@@ -60,6 +72,7 @@ export class StripePaymentAdapter implements IStripePaymentAdapter {
     description?: string;
   }): Promise<Stripe.PaymentIntent> {
     const { amountCents, currency, metadata, idempotencyKey, description } = params;
+    const client = await this.getClient(metadata.organizationId);
 
     const metadataRecord: Record<string, string> = {
       organizationId: metadata.organizationId,
@@ -78,7 +91,7 @@ export class StripePaymentAdapter implements IStripePaymentAdapter {
       metadataRecord.environment = metadata.environment;
     }
 
-    return await this.stripe.paymentIntents.create(
+    return await client.paymentIntents.create(
       {
         amount: amountCents,
         currency: currency.toLowerCase(),
@@ -96,8 +109,9 @@ export class StripePaymentAdapter implements IStripePaymentAdapter {
   /**
    * Retrieves the authoritative PaymentIntent status from Stripe
    */
-  async retrievePaymentIntent(paymentIntentId: string): Promise<Stripe.PaymentIntent> {
-    return await this.stripe.paymentIntents.retrieve(paymentIntentId, {
+  async retrievePaymentIntent(paymentIntentId: string, organizationId?: string): Promise<Stripe.PaymentIntent> {
+    const client = await this.getClient(organizationId);
+    return await client.paymentIntents.retrieve(paymentIntentId, {
       expand: ["latest_charge", "payment_method"],
     });
   }
@@ -107,8 +121,10 @@ export class StripePaymentAdapter implements IStripePaymentAdapter {
    */
   async cancelPaymentIntent(
     paymentIntentId: string,
-    cancellationReason?: string
+    cancellationReason?: string,
+    organizationId?: string
   ): Promise<Stripe.PaymentIntent> {
+    const client = await this.getClient(organizationId);
     const options: Stripe.PaymentIntentCancelParams = {};
     if (
       cancellationReason === "duplicate" ||
@@ -119,7 +135,7 @@ export class StripePaymentAdapter implements IStripePaymentAdapter {
       options.cancellation_reason = cancellationReason;
     }
 
-    return await this.stripe.paymentIntents.cancel(paymentIntentId, options);
+    return await client.paymentIntents.cancel(paymentIntentId, options);
   }
 
   /**
@@ -135,7 +151,7 @@ export class StripePaymentAdapter implements IStripePaymentAdapter {
       process.env.STRIPE_WEBHOOK_SECRET ||
       "whsec_dummy_for_testing";
 
-    return this.stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+    return this.fallbackStripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
   }
 }
 

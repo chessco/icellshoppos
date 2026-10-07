@@ -201,11 +201,15 @@ export function TerminalProvider({ children }: { children: React.ReactNode }) {
 
   const connectReader = useCallback(
     async (reader: IDiscoveredReader) => {
-      if (!isStripeEnabled) return false;
       setLastError(null);
-      return stripeAdapter.connectReader(reader, posDeviceId);
+      setConnectedReader(reader);
+      const ok = await stripeAdapter.connectReader(reader, posDeviceId);
+      if (!ok) {
+        setConnectedReader(null);
+      }
+      return ok;
     },
-    [stripeAdapter, isStripeEnabled, posDeviceId]
+    [stripeAdapter, posDeviceId]
   );
 
   const disconnectReader = useCallback(async () => {

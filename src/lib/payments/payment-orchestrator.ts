@@ -77,7 +77,7 @@ export class PaymentOrchestrator {
       });
     }
 
-    const result = await this.stripeAdapter.createConnectionToken(locationId);
+    const result = await this.stripeAdapter.createConnectionToken(locationId, organizationId);
 
     await logAudit({
       organizationId,
@@ -399,7 +399,7 @@ export class PaymentOrchestrator {
     const latestAttempt = posPayment.attempts[0];
 
     // 2. Authoritative lookup on Stripe API Cloud
-    const stripeIntent = await this.stripeAdapter.retrievePaymentIntent(stripeRecord.stripePaymentIntentId);
+    const stripeIntent = await this.stripeAdapter.retrievePaymentIntent(stripeRecord.stripePaymentIntentId, organizationId);
 
     // 3. Map status authoritatively
     const mappedPaymentStatus = mapStripeIntentStatusToPaymentStatus(stripeIntent.status);
@@ -555,7 +555,7 @@ export class PaymentOrchestrator {
     // Attempt cancellation on Stripe
     let canceledIntent;
     try {
-      canceledIntent = await this.stripeAdapter.cancelPaymentIntent(stripeRecord.stripePaymentIntentId, reason);
+      canceledIntent = await this.stripeAdapter.cancelPaymentIntent(stripeRecord.stripePaymentIntentId, reason, organizationId);
     } catch (err) {
       console.warn("[payment-orchestrator] Stripe cancel intent error:", err);
       throw err;

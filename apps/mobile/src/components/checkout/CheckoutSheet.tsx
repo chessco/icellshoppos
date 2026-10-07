@@ -164,11 +164,23 @@ export function CheckoutSheet({
     setErrorMessage(null);
     try {
       const readers = await discoverReaders();
-      if (readers.length === 1 && !connectedReader) {
+      if (readers.length > 0) {
         await connectReader(readers[0]);
       }
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : "Error scanning for card readers.");
+    }
+  };
+
+  const handleConnectReader = async (r: IDiscoveredReader) => {
+    setErrorMessage(null);
+    try {
+      const ok = await connectReader(r);
+      if (!ok) {
+        setErrorMessage("No se pudo conectar con el lector. Verifica que la terminal esté encendida.");
+      }
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : "Error al conectar lector.");
     }
   };
 
@@ -812,7 +824,7 @@ export function CheckoutSheet({
                       <TouchableOpacity
                         key={r.id}
                         style={styles.discoveredItem}
-                        onPress={() => connectReader(r)}
+                        onPress={() => void handleConnectReader(r)}
                       >
                         <Text style={styles.discoveredItemText}>
                           📲 {r.label || r.deviceType} ({r.serialNumber})
