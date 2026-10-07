@@ -57,7 +57,7 @@ export class WhatsAppGatewayService {
         });
         const map = new Map(rows.map((r) => [r.key.replace(`integration:${orgId}:`, ""), r.value]));
 
-        if (map.get("whatsapp_provider")) activeProvider = map.get("whatsapp_provider")!;
+        if (map.get("whatsapp_provider")) activeProvider = map.get("whatsapp_provider")!.trim().toUpperCase();
         if (map.get("pitayacore_api_url")) activeApiUrl = map.get("pitayacore_api_url")!.replace(/\/+$/, "");
         if (map.get("pitayacore_api_key")) activeApiKey = map.get("pitayacore_api_key")!;
         if (map.get("pitayacore_tenant_id")) activeTenantId = map.get("pitayacore_tenant_id")!;
@@ -83,6 +83,15 @@ export class WhatsAppGatewayService {
       return {
         success: true,
         providerMessageId: "WA_WEB_LINK",
+        mediaUrl,
+        webFallbackUrl,
+      };
+    }
+
+    if (activeProvider === "PITAYACORE" && (!activeApiKey.trim() || !activeTenantId.trim())) {
+      return {
+        success: false,
+        error: "PitayaCore requiere API Key y Tenant ID configurados para enviar WhatsApp.",
         mediaUrl,
         webFallbackUrl,
       };

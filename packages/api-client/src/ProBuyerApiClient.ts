@@ -338,8 +338,9 @@ export class ProBuyerApiClient {
     return { ok: res.ok, data: res.data?.device, error: res.error };
   }
 
-  async getStripeReaders(): Promise<{ ok: boolean; data?: IStripeReaderInfo[]; error?: string }> {
-    const res = await this.request<{ readers: IStripeReaderInfo[] }>("/api/org/stripe-readers", { method: "GET" });
+  async getStripeReaders(locationId?: string): Promise<{ ok: boolean; data?: IStripeReaderInfo[]; error?: string }> {
+    const query = locationId ? `?locationId=${encodeURIComponent(locationId)}` : "";
+    const res = await this.request<{ readers: IStripeReaderInfo[] }>(`/api/org/stripe-readers${query}`, { method: "GET" });
     return { ok: res.ok, data: res.data?.readers, error: res.error };
   }
 
@@ -350,10 +351,14 @@ export class ProBuyerApiClient {
     ipAddress?: string;
     stripeLocationId?: string;
     stripeReaderId?: string;
+    siteId?: string;
   }): Promise<{ ok: boolean; data?: IStripeReaderInfo; error?: string }> {
     const res = await this.request<{ reader: IStripeReaderInfo }>("/api/org/stripe-readers", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        locationId: payload.stripeLocationId,
+      }),
     });
     return { ok: res.ok, data: res.data?.reader, error: res.error };
   }
@@ -436,6 +441,7 @@ export class ProBuyerApiClient {
     saleId?: string;
     customerEmail?: string;
     customerName?: string;
+    customerPhone?: string;
     description?: string;
   }): Promise<{ ok: boolean; checkoutUrl?: string; qrCodeUrl?: string; sessionId?: string; error?: string }> {
     const res = await this.request<{

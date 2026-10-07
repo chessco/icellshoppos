@@ -98,6 +98,7 @@ export class CheckoutApplicationService {
     saleId?: string;
     customerEmail?: string;
     customerName?: string;
+    customerPhone?: string;
     description?: string;
   }): Promise<{ ok: boolean; checkoutUrl?: string; qrCodeUrl?: string; sessionId?: string; error?: string }> {
     return this.apiClient.createStripeCheckoutSession(payload);

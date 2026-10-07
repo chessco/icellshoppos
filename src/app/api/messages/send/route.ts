@@ -55,10 +55,11 @@ export async function POST(request: NextRequest) {
       });
 
       return NextResponse.json({
-        success: true,
+        success: waResult.success,
+        ...(waResult.success ? {} : { error: waResult.error || "WhatsApp provider rejected the message." }),
         message: record,
         providerResult: waResult,
-      });
+      }, { status: waResult.success ? 200 : 502 });
     }
 
     // INTERNAL Channel

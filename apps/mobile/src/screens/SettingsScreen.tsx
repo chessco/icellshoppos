@@ -4,17 +4,74 @@ import { useAuth, PROD_BACKEND_URL } from "../contexts/AuthContext";
 import { usePosLayout } from "../contexts/PosLayoutContext";
 import { IPAD_THEME } from "../theme/tokens";
 import { Button } from "../components/ui/Button";
+import { useTerminal } from "../contexts/TerminalContext";
+import type { IDiscoveredReader } from "../services/StripeTerminalAdapter";
 
 export function SettingsScreen() {
-  const { session, baseUrl, setBaseUrl, logout } = useAuth();
+  const { session, baseUrl, setBaseUrl, logout, apiClient } = useAuth();
   const { layoutMode, setLayoutMode } = usePosLayout();
+  const {
+    capabilities,
+    discoveredReaders,
+    connectedReader,
+    defaultReaderId,
+    readerHealth,
+    isDiscovering,
+    discoverReaders,
+    connectReader,
+    setDefaultReader,
+    checkReaderStatus,
+  } = useTerminal();
   const [urlInput, setUrlInput] = useState(baseUrl);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [readerNames, setReaderNames] = useState<Record<string, string>>({});
+  const [readerMessage, setReaderMessage] = useState<string | null>(null);
 
   const handleSave = () => {
     setBaseUrl(urlInput.trim());
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 3000);
+  };
+
+  const handleDiscoverReaders = async () => {
+    setReaderMessage(null);
+    const readers = await discoverReaders();
+    setReaderNames((current) => {
+      const next = { ...current };
+      readers.forEach((reader) => {
+        if (!next[reader.id]) next[reader.id] = reader.label || reader.deviceType;
+      });
+      return next;
+    });
+    setReaderMessage(readers.length ? `${readers.length} terminal(es) encontrado(s).` : "No se encontraron terminales.");
+  };
+
+  const handleSaveReaderName = async (reader: IDiscoveredReader) => {
+    const label = readerNames[reader.id]?.trim() || reader.label || reader.deviceType;
+    const result = await apiClient.registerStripeReader({
+      stripeReaderId: reader.stripeReaderId || reader.id,
+      label,
+      serialNumber: reader.serialNumber,
+      deviceType: reader.deviceType,
+      stripeLocationId: capabilities.stripeLocationId || undefined,
+    });
+    setReaderMessage(result.ok ? `Nombre guardado para ${label}.` : result.error || "No se pudo guardar el nombre.");
+  };
+
+  const handleUseAsDefault = async (reader: IDiscoveredReader) => {
+    await setDefaultReader(reader);
+    const connected = await connectReader(reader);
+    setReaderMessage(
+      connected
+        ? `Terminal predeterminada y lista: ${readerNames[reader.id] || reader.label || reader.deviceType}.`
+        : "La terminal quedó como predeterminada, pero no está lista para cobrar."
+    );
+  };
+
+  const handleCheckReaderStatus = async (reader: IDiscoveredReader) => {
+    const status = await checkReaderStatus(reader);
+    const labels = { NO_READER: "sin terminal", OFFLINE: "fuera de línea", ONLINE: "en línea", READY: "lista para cobrar" };
+    setReaderMessage(`${readerNames[reader.id] || reader.label || reader.deviceType}: ${labels[status]}.`);
   };
 
   return (
@@ -25,7 +82,21 @@ export function SettingsScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.content}>
-        <Text style={styles.screenTitle}>Settings & Diagnostics</Text>
+        <View style={styles.settingsTitleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.screenTitle}>Settings & Diagnostics</Text>
+            <Text style={styles.settingsTerminalHint}>Terminales Stripe: configura lectores y verifica cuál está lista para cobrar.</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.topReaderButton}
+            onPress={() => void handleDiscoverReaders()}
+            disabled={isDiscovering}
+            accessibilityRole="button"
+            accessibilityLabel="Buscar terminales Stripe"
+          >
+            <Text style={styles.topReaderButtonText}>{isDiscovering ? "Buscando..." : "🔎 Terminales Stripe"}</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* POS Mode Selection */}
         <View style={styles.section}>
@@ -73,6 +144,75 @@ export function SettingsScreen() {
               {layoutMode === "classic" && <Text style={styles.modeCheck}>✓ Activo</Text>}
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* Stripe Terminal Management */}
+        <View style={styles.section}>
+          <View style={styles.readerSectionHeader}>
+            <View style={styles.readerSectionHeaderText}>
+              <Text style={styles.sectionTitle}>Terminales Stripe</Text>
+              <Text style={styles.sectionSub}>
+                Busca terminales, asigna un nombre y selecciona cuál usará este iPad por defecto.
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.readerActionButton}
+              onPress={() => void handleDiscoverReaders()}
+              disabled={isDiscovering}
+            >
+              <Text style={styles.readerActionText}>{isDiscovering ? "Buscando..." : "Buscar terminales"}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.readerHealthRow}>
+            <Text style={styles.infoKey}>Estado actual</Text>
+            <Text style={[styles.infoVal, readerHealth === "READY" && styles.readerReadyText]}>
+              {readerHealth === "READY" ? "LISTA PARA COBRAR" : readerHealth}
+            </Text>
+          </View>
+
+          {readerMessage && <Text style={styles.readerMessage}>{readerMessage}</Text>}
+
+          {discoveredReaders.length === 0 ? (
+            <Text style={styles.readerEmptyText}>Presiona “Buscar terminales” para comenzar.</Text>
+          ) : (
+            discoveredReaders.map((reader) => {
+              const readerName = readerNames[reader.id] || reader.label || reader.deviceType;
+              const isDefault = defaultReaderId === reader.id;
+              const isConnected = connectedReader?.id === reader.id;
+              return (
+                <View key={reader.id} style={[styles.readerConfigRow, isDefault && styles.readerConfigRowActive]}>
+                  <View style={styles.readerConfigInfo}>
+                    <Text style={styles.readerDeviceText}>{readerName}</Text>
+                    <Text style={styles.readerMetaText}>
+                      {reader.deviceType} · S/N {reader.serialNumber} · {reader.status}
+                    </Text>
+                    <TextInput
+                      style={styles.readerNameInput}
+                      value={readerNames[reader.id] || readerName}
+                      onChangeText={(value) => setReaderNames((current) => ({ ...current, [reader.id]: value }))}
+                      placeholder="Nombre de la terminal"
+                      placeholderTextColor={IPAD_THEME.colors.textMuted}
+                    />
+                  </View>
+                  <View style={styles.readerConfigActions}>
+                    <TouchableOpacity style={styles.smallReaderButton} onPress={() => void handleSaveReaderName(reader)}>
+                      <Text style={styles.smallReaderButtonText}>Guardar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.smallReaderButton, isDefault && styles.smallReaderButtonActive]}
+                      onPress={() => void handleUseAsDefault(reader)}
+                    >
+                      <Text style={styles.smallReaderButtonText}>{isDefault ? "Predeterminada" : "Usar aquí"}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.smallReaderButton} onPress={() => void handleCheckReaderStatus(reader)}>
+                      <Text style={styles.smallReaderButtonText}>{isConnected ? "Verificar" : "Estado"}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })
+          )}
         </View>
 
         {/* Server Config */}
@@ -164,7 +304,33 @@ const styles = StyleSheet.create({
     color: IPAD_THEME.colors.textPrimary,
     fontSize: 26,
     fontWeight: "900",
+    marginBottom: IPAD_THEME.spacing.xs,
+  },
+  settingsTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: IPAD_THEME.spacing.lg,
     marginBottom: IPAD_THEME.spacing.xl,
+  },
+  settingsTerminalHint: {
+    color: IPAD_THEME.colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  topReaderButton: {
+    minHeight: IPAD_THEME.touchTarget.minHeight,
+    paddingHorizontal: IPAD_THEME.spacing.lg,
+    borderRadius: IPAD_THEME.radius.md,
+    backgroundColor: IPAD_THEME.colors.accentMuted,
+    borderWidth: 1,
+    borderColor: IPAD_THEME.colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  topReaderButtonText: {
+    color: IPAD_THEME.colors.accent,
+    fontSize: 13,
+    fontWeight: "900",
   },
   section: {
     backgroundColor: IPAD_THEME.colors.surfacePrimary,
@@ -267,6 +433,112 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     marginLeft: IPAD_THEME.spacing.md,
+  },
+  readerSectionHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: IPAD_THEME.spacing.md,
+  },
+  readerSectionHeaderText: {
+    flex: 1,
+  },
+  readerActionButton: {
+    minHeight: IPAD_THEME.touchTarget.minHeight,
+    paddingHorizontal: IPAD_THEME.spacing.md,
+    borderRadius: IPAD_THEME.radius.md,
+    backgroundColor: IPAD_THEME.colors.accentMuted,
+    borderWidth: 1,
+    borderColor: IPAD_THEME.colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  readerActionText: {
+    color: IPAD_THEME.colors.accent,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  readerHealthRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: IPAD_THEME.spacing.sm,
+    marginBottom: IPAD_THEME.spacing.sm,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
+  },
+  readerReadyText: {
+    color: IPAD_THEME.colors.success,
+  },
+  readerMessage: {
+    color: IPAD_THEME.colors.accent,
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: IPAD_THEME.spacing.sm,
+  },
+  readerEmptyText: {
+    color: IPAD_THEME.colors.textMuted,
+    fontSize: 13,
+  },
+  readerConfigRow: {
+    backgroundColor: IPAD_THEME.colors.surfaceSecondary,
+    borderRadius: IPAD_THEME.radius.md,
+    borderWidth: 1,
+    borderColor: IPAD_THEME.colors.borderSubtle,
+    padding: IPAD_THEME.spacing.md,
+    marginBottom: IPAD_THEME.spacing.sm,
+  },
+  readerConfigRowActive: {
+    borderColor: IPAD_THEME.colors.accent,
+    backgroundColor: "rgba(56, 189, 248, 0.08)",
+  },
+  readerConfigInfo: {
+    marginBottom: IPAD_THEME.spacing.sm,
+  },
+  readerDeviceText: {
+    color: IPAD_THEME.colors.textPrimary,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  readerMetaText: {
+    color: IPAD_THEME.colors.textMuted,
+    fontSize: 11,
+    marginTop: 3,
+  },
+  readerNameInput: {
+    height: IPAD_THEME.touchTarget.minHeight,
+    marginTop: IPAD_THEME.spacing.sm,
+    backgroundColor: IPAD_THEME.colors.background,
+    borderRadius: IPAD_THEME.radius.sm,
+    borderWidth: 1,
+    borderColor: IPAD_THEME.colors.borderSubtle,
+    paddingHorizontal: IPAD_THEME.spacing.sm,
+    color: IPAD_THEME.colors.textPrimary,
+    fontSize: 13,
+  },
+  readerConfigActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: IPAD_THEME.spacing.sm,
+  },
+  smallReaderButton: {
+    minHeight: 38,
+    paddingHorizontal: IPAD_THEME.spacing.sm,
+    borderRadius: IPAD_THEME.radius.sm,
+    backgroundColor: IPAD_THEME.colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: IPAD_THEME.colors.borderSubtle,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  smallReaderButtonActive: {
+    backgroundColor: IPAD_THEME.colors.accent,
+    borderColor: IPAD_THEME.colors.accent,
+  },
+  smallReaderButtonText: {
+    color: IPAD_THEME.colors.textPrimary,
+    fontSize: 11,
+    fontWeight: "800",
   },
   presetBtn: {
     flex: 1,

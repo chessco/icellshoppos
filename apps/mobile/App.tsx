@@ -12,7 +12,7 @@ import { PosLayoutProvider } from "./src/contexts/PosLayoutContext";
 import { CommissionProvider } from "./src/contexts/CommissionContext";
 
 import { TerminalProvider } from "./src/contexts/TerminalContext";
-import { getTapToPayMode } from "./src/config/paymentConfig";
+import { getStripeTerminalMode, getTapToPayMode } from "./src/config/paymentConfig";
 import { loadStripeTerminalNative } from "./src/services/nativeStripeTerminal";
 
 function AppContent() {
@@ -44,17 +44,7 @@ function AppContent() {
 }
 
 function StripeTerminalRoot({ children }: { children: React.ReactElement }) {
-  if (getTapToPayMode() !== "real") {
-    return children;
-  }
-
-  const nativeStripe = loadStripeTerminalNative();
-  const StripeTerminalProvider = nativeStripe?.StripeTerminalProvider;
-  if (!StripeTerminalProvider) {
-    return children;
-  }
-
-  const { apiClient } = useAuth();
+  const { apiClient, session, isRestoringSession } = useAuth();
   const tokenProvider = useCallback(async () => {
     const response = await apiClient.getStripeConnectionToken();
     if (!response.ok || !response.secret) {
@@ -63,6 +53,19 @@ function StripeTerminalRoot({ children }: { children: React.ReactElement }) {
     return response.secret;
   }, [apiClient]);
 
+  if (getStripeTerminalMode() !== "real" && getTapToPayMode() !== "real") {
+    return children;
+  }
+
+  if (isRestoringSession || !session) {
+    return children;
+  }
+
+  const nativeStripe = loadStripeTerminalNative();
+  const StripeTerminalProvider = nativeStripe?.StripeTerminalProvider;
+  if (!StripeTerminalProvider) {
+    return children;
+  }
   return (
     <StripeTerminalProvider tokenProvider={tokenProvider} logLevel="none">
       {children}

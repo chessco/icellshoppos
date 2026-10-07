@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
       saleId,
       customerEmail,
       customerName,
+      customerPhone,
       description,
     } = body;
 
@@ -44,6 +45,8 @@ export async function POST(request: NextRequest) {
         organizationId,
         saleId: saleId ? String(saleId) : "",
         userId: session.userId,
+        customerName: customerName ? String(customerName).trim() : "",
+        customerPhone: customerPhone ? String(customerPhone).trim() : "",
       },
     });
 

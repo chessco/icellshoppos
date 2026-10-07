@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getRequestOrgAccess } from "@/lib/org-permissions";
+import { getStripeForOrg } from "@/lib/stripe";
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,11 +9,13 @@ export async function GET(request: NextRequest) {
     const { organizationId } = access;
     const { searchParams } = new URL(request.url);
     const siteId = searchParams.get("siteId") || undefined;
+    const locationId = searchParams.get("locationId") || undefined;
 
-    const readers = await db.stripeReader.findMany({
+    const storedReaders = await db.stripeReader.findMany({
       where: {
         organizationId,
         ...(siteId ? { siteId } : {}),
+        ...(locationId ? { locationId } : {}),
       },
       include: {
         posDevice: { select: { id: true, deviceName: true, deviceUuid: true } },
@@ -21,7 +24,36 @@ export async function GET(request: NextRequest) {
       orderBy: { updatedAt: "desc" },
     });
 
-    return NextResponse.json({ readers });
+    // Stripe is the source of truth for physical reader availability. The
+    // local record is still used for the operator's custom name and POS link.
+    try {
+      const stripeClient = await getStripeForOrg(organizationId);
+      const remoteReaders = await stripeClient.terminal.readers.list({
+        location: locationId,
+        limit: 100,
+      });
+      const storedByStripeId = new Map(storedReaders.map((reader) => [reader.stripeReaderId, reader]));
+      const readers = remoteReaders.data.map((reader) => {
+        const stored = storedByStripeId.get(reader.id);
+        return {
+          id: stored?.id || reader.id,
+          stripeReaderId: reader.id,
+          label: stored?.label || reader.label || "Stripe Terminal Reader",
+          serialNumber: stored?.serialNumber || reader.serial_number || "",
+          deviceType: stored?.deviceType || reader.device_type,
+          status: reader.status === "online" ? "ONLINE" : "OFFLINE",
+          ipAddress: reader.ip_address || null,
+          batteryLevel: null,
+          stripeLocationId: reader.location || locationId || null,
+          lastSeenAt: reader.last_seen_at ? new Date(reader.last_seen_at).toISOString() : null,
+        };
+      });
+      return NextResponse.json({ readers });
+    } catch (stripeError) {
+      console.warn("[org/stripe-readers] Stripe list unavailable; using local reader records.", stripeError);
+    }
+
+    return NextResponse.json({ readers: storedReaders });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

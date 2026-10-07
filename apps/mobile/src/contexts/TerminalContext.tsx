@@ -23,7 +23,7 @@ import type {
   IAvailableTargetDevice,
 } from "@ireader/contracts";
 import { useAuth } from "./AuthContext";
-import { StripeTerminalAdapter, type IDiscoveredReader } from "../services/StripeTerminalAdapter";
+import { StripeTerminalAdapter, type IDiscoveredReader, type ReaderHealthState } from "../services/StripeTerminalAdapter";
 import {
   TapToPayIPhoneAdapter,
   type TapToPayOperationalState,
@@ -48,10 +48,14 @@ export interface TerminalContextValue {
   availableTargetDevices: IAvailableTargetDevice[];
   pendingHandoffs: IPaymentHandoffInfo[];
   activeHandoff: IPaymentHandoffInfo | null;
+  defaultReaderId: string | null;
+  readerHealth: ReaderHealthState;
   refreshCapabilities: () => Promise<void>;
   discoverReaders: () => Promise<IDiscoveredReader[]>;
   connectReader: (reader: IDiscoveredReader) => Promise<boolean>;
   disconnectReader: () => Promise<void>;
+  setDefaultReader: (reader: IDiscoveredReader) => Promise<void>;
+  checkReaderStatus: (reader?: IDiscoveredReader | null) => Promise<ReaderHealthState>;
   collectAndProcessCardPayment: (
     intent: ICreatePaymentIntentResponse,
     onProgress?: (state: StripeTerminalOperationalState) => void
@@ -90,6 +94,7 @@ const DEFAULT_CAPABILITIES: IPaymentCapabilities = {
 const TerminalContext = createContext<TerminalContextValue | null>(null);
 
 const STORAGE_KEY_POS_DEVICE_UUID = "@ireader/pos_device_uuid";
+const STORAGE_KEY_DEFAULT_READER = "@ireader/default_stripe_reader_id";
 
 function generateUUID(): string {
   if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
@@ -124,8 +129,17 @@ export function TerminalProvider({ children }: { children: React.ReactNode }) {
   const [discoveredReaders, setDiscoveredReaders] = useState<IDiscoveredReader[]>([]);
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [defaultReaderId, setDefaultReaderId] = useState<string | null>(null);
+  const [readerHealth, setReaderHealth] = useState<ReaderHealthState>("NO_READER");
 
   const posDeviceId = useMemo(() => getOrCreateDeviceUUID(), []);
+
+  useEffect(() => {
+    const storage = new MobileSecureStorageAdapter();
+    void storage.getItem(STORAGE_KEY_DEFAULT_READER).then((value) => {
+      if (value) setDefaultReaderId(value);
+    });
+  }, []);
 
   const isIPhone = useMemo(() => {
     return Platform.OS === "ios" && !(Platform as any).isPad;
@@ -141,7 +155,8 @@ export function TerminalProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     tapToPayAdapter.setSiteId(capabilities.stripeLocationId || undefined);
-  }, [tapToPayAdapter, capabilities.stripeLocationId]);
+    stripeAdapter.setSiteId(capabilities.stripeLocationId || undefined);
+  }, [tapToPayAdapter, stripeAdapter, capabilities.stripeLocationId]);
 
   // Subscribe to Stripe Reader adapter state events
   useEffect(() => {
@@ -206,6 +221,9 @@ export function TerminalProvider({ children }: { children: React.ReactNode }) {
       const ok = await stripeAdapter.connectReader(reader, posDeviceId);
       if (!ok) {
         setConnectedReader(null);
+        setReaderHealth("OFFLINE");
+      } else {
+        setReaderHealth("READY");
       }
       return ok;
     },
@@ -214,7 +232,23 @@ export function TerminalProvider({ children }: { children: React.ReactNode }) {
 
   const disconnectReader = useCallback(async () => {
     await stripeAdapter.disconnectReader();
+    setReaderHealth("NO_READER");
   }, [stripeAdapter]);
+
+  const setDefaultReader = useCallback(async (reader: IDiscoveredReader) => {
+    const storage = new MobileSecureStorageAdapter();
+    await storage.setItem(STORAGE_KEY_DEFAULT_READER, reader.id);
+    setDefaultReaderId(reader.id);
+  }, []);
+
+  const checkReaderStatus = useCallback(
+    async (reader: IDiscoveredReader | null = connectedReader) => {
+      const health = await stripeAdapter.checkReaderStatus(reader);
+      setReaderHealth(health);
+      return health;
+    },
+    [connectedReader, stripeAdapter]
+  );
 
   const collectAndProcessCardPayment = useCallback(
     async (
@@ -354,10 +388,14 @@ export function TerminalProvider({ children }: { children: React.ReactNode }) {
       availableTargetDevices,
       pendingHandoffs,
       activeHandoff,
+      defaultReaderId,
+      readerHealth,
       refreshCapabilities,
       discoverReaders,
       connectReader,
       disconnectReader,
+      setDefaultReader,
+      checkReaderStatus,
       collectAndProcessCardPayment,
       initializeTapToPay,
       collectAndProcessTapToPayPayment,
@@ -385,10 +423,14 @@ export function TerminalProvider({ children }: { children: React.ReactNode }) {
       availableTargetDevices,
       pendingHandoffs,
       activeHandoff,
+      defaultReaderId,
+      readerHealth,
       refreshCapabilities,
       discoverReaders,
       connectReader,
       disconnectReader,
+      setDefaultReader,
+      checkReaderStatus,
       collectAndProcessCardPayment,
       initializeTapToPay,
       collectAndProcessTapToPayPayment,

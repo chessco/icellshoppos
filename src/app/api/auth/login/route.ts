@@ -34,7 +34,8 @@ const getCooldownSecondsRemaining = (createdAt: Date) => {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    let email = String(body?.email ?? "").trim().toLowerCase();
+    const identifier = String(body?.email ?? body?.username ?? "").trim().toLowerCase();
+    let email = identifier;
     if (email.endsWith("@gmail")) {
       email = `${email}.com`;
     }
@@ -42,11 +43,29 @@ export async function POST(request: NextRequest) {
     const verificationCode = String(body?.verificationCode ?? "").trim();
     const requestedOrganizationId = String(body?.organizationId ?? "").trim();
 
-    if (!email || !password) {
+    if (!identifier || !password) {
       return NextResponse.json(
-        { error: "Email and password are required." },
+        { error: "Username/email and password are required." },
         { status: 400 }
       );
+    }
+
+    // The POS may use the local username (the part before @). Resolve it only
+    // when it maps to one account, while keeping full email login unchanged.
+    if (!email.includes("@")) {
+      const usernameMatches = await db.user.findMany({
+        where: {
+          email: {
+            startsWith: `${email}@`,
+            mode: "insensitive",
+          },
+        },
+        select: { email: true },
+        take: 2,
+      });
+      if (usernameMatches.length === 1) {
+        email = usernameMatches[0].email.toLowerCase();
+      }
     }
 
     const user = await db.user.findUnique({

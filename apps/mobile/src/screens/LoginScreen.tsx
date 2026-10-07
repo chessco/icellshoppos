@@ -30,7 +30,7 @@ export function LoginScreen() {
   const handleSignIn = async () => {
     setLocalError(null);
     if (!email.trim()) {
-      setLocalError("Please enter your email.");
+      setLocalError("Please enter your username or email.");
       return;
     }
     if (!password) {
@@ -63,7 +63,7 @@ export function LoginScreen() {
         )}
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Email Address</Text>
+          <Text style={styles.label}>Username or Email</Text>
           <TextInput
             style={styles.input}
             value={email}
@@ -72,11 +72,11 @@ export function LoginScreen() {
               setLocalError(null);
               if (requires2FA) setRequires2FA(false);
             }}
-            placeholder="operator@icellshop.com"
+            placeholder="operator or operator@icellshop.com"
             placeholderTextColor={IPAD_THEME.colors.textMuted}
             autoCapitalize="none"
-            keyboardType="email-address"
-            accessibilityLabel="Email Address"
+            keyboardType="default"
+            accessibilityLabel="Username or Email"
           />
         </View>
 

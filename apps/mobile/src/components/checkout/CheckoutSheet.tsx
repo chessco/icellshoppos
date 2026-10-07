@@ -16,6 +16,7 @@ import { useCommission } from "../../contexts/CommissionContext";
 import { useTerminal } from "../../contexts/TerminalContext";
 import { CheckoutApplicationService, normalizeWhatsappPhone } from "@ireader/application";
 import type { BackendSaleCreatedResponse, StripeTerminalOperationalState } from "@ireader/contracts";
+import type { IDiscoveredReader } from "../../services/StripeTerminalAdapter";
 import { IPAD_THEME } from "../../theme/tokens";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
@@ -78,9 +79,12 @@ export function CheckoutSheet({
     tapToPayState,
     connectedReader,
     discoveredReaders,
+    defaultReaderId,
+    readerHealth,
     isDiscovering,
     discoverReaders,
     connectReader,
+    checkReaderStatus,
     collectAndProcessCardPayment,
     collectAndProcessTapToPayPayment,
     posDeviceId,
@@ -145,6 +149,9 @@ export function CheckoutSheet({
   const [stripeCheckoutUrl, setStripeCheckoutUrl] = useState<string | null>(null);
   const [stripeQrCodeUrl, setStripeQrCodeUrl] = useState<string | null>(null);
   const [isGeneratingLink, setIsGeneratingLink] = useState(false);
+  const [isSendingStripeLink, setIsSendingStripeLink] = useState(false);
+  const [stripeLinkMessage, setStripeLinkMessage] = useState<string | null>(null);
+  const [showReaderSelector, setShowReaderSelector] = useState(false);
 
   // Fetch available target iPhones when selecting Card_Handoff on iPad
   useEffect(() => {
@@ -167,6 +174,7 @@ export function CheckoutSheet({
 
   const handleGenerateStripeLink = async () => {
     setErrorMessage(null);
+    setStripeLinkMessage(null);
     setIsGeneratingLink(true);
     try {
       const res = await checkoutService.createStripeCheckoutSession({
@@ -175,6 +183,7 @@ export function CheckoutSheet({
         saleId: checkoutIdRef.current,
         customerEmail: customerEmail.trim().toLowerCase() || undefined,
         customerName: customerName.trim() || undefined,
+        customerPhone: customerPhone.trim() || undefined,
         description: `Venta POS #${checkoutIdRef.current.substring(0, 8)}`,
       });
       if (res.ok && res.checkoutUrl) {
@@ -190,13 +199,47 @@ export function CheckoutSheet({
     }
   };
 
+  const handleSendStripeLinkWhatsApp = async () => {
+    if (!stripeCheckoutUrl) return;
+    const phoneNorm = normalizeWhatsappPhone(customerPhone);
+    if (!phoneNorm.valid) {
+      setErrorMessage(phoneNorm.error || "Ingresa un WhatsApp válido antes de enviar el enlace.");
+      return;
+    }
+
+    setErrorMessage(null);
+    setStripeLinkMessage(null);
+    setIsSendingStripeLink(true);
+    try {
+      const message = `Hola ${customerName.trim() || ""}! Aquí tienes tu enlace de pago seguro con tarjeta para tu compra de ${formatCurrency(
+        totalPreview
+      )}: ${stripeCheckoutUrl}`;
+      const result = await apiClient.sendChatMessage({
+        channel: "WHATSAPP",
+        phone: phoneNorm.normalized,
+        recipientName: customerName.trim() || undefined,
+        content: message,
+      });
+      if (!result.ok || result.providerResult?.success === false) {
+        throw new Error(result.error || result.providerResult?.error || "No se pudo enviar el enlace por WhatsApp.");
+      }
+      setStripeLinkMessage("Enlace enviado por WhatsApp mediante el proveedor configurado.");
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : "No se pudo enviar el enlace por WhatsApp.");
+    } finally {
+      setIsSendingStripeLink(false);
+    }
+  };
+
   // Reader Discovery Handler for Card / Stripe
   const handleScanReaders = async () => {
     setErrorMessage(null);
     try {
       const readers = await discoverReaders();
       if (readers.length > 0) {
-        await connectReader(readers[0]);
+        const preferredReader = readers.find((reader) => reader.id === defaultReaderId) || readers[0];
+        await connectReader(preferredReader);
+        setShowReaderSelector(readers.length > 1);
       }
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : "Error scanning for card readers.");
@@ -209,6 +252,8 @@ export function CheckoutSheet({
       const ok = await connectReader(r);
       if (!ok) {
         setErrorMessage("No se pudo conectar con el lector. Verifica que la terminal esté encendida.");
+      } else {
+        setShowReaderSelector(false);
       }
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : "Error al conectar lector.");
@@ -512,7 +557,7 @@ export function CheckoutSheet({
           amount: totalPreview,
           currency: capabilities.currency || "mxn",
           posDeviceId,
-          stripeReaderId: connectedReader.id,
+          stripeReaderId: connectedReader.stripeReaderId || connectedReader.id,
           customerName: customerName.trim(),
           customerEmail: customerEmail.trim().toLowerCase() || undefined,
           customerPhone: phoneNorm.normalized,
@@ -928,6 +973,7 @@ export function CheckoutSheet({
                         <Text style={styles.qrScanPrompt}>
                           📱 Apunte con la cámara del celular para pagar
                         </Text>
+                        {stripeLinkMessage && <Text style={styles.stripeLinkSuccess}>{stripeLinkMessage}</Text>}
                         <View style={styles.qrActionsRow}>
                           <TouchableOpacity
                             style={styles.qrActionBtn}
@@ -941,21 +987,11 @@ export function CheckoutSheet({
                           </TouchableOpacity>
                           <TouchableOpacity
                             style={[styles.qrActionBtn, { backgroundColor: "#25D366" }]}
-                            onPress={() => {
-                              if (stripeCheckoutUrl) {
-                                const phoneClean = customerPhone.replace(/[^0-9]/g, "");
-                                const msg = `Hola! Aquí tienes tu enlace de pago seguro con tarjeta para tu compra de ${formatCurrency(
-                                  totalPreview
-                                )}: ${stripeCheckoutUrl}`;
-                                const waUrl = phoneClean
-                                  ? `https://wa.me/${phoneClean}?text=${encodeURIComponent(msg)}`
-                                  : `whatsapp://send?text=${encodeURIComponent(msg)}`;
-                                void Linking.openURL(waUrl);
-                              }
-                            }}
+                            onPress={() => void handleSendStripeLinkWhatsApp()}
+                            disabled={isSendingStripeLink}
                           >
                             <Text style={[styles.qrActionBtnText, { color: "#ffffff" }]}>
-                              📲 Enviar por WhatsApp
+                              {isSendingStripeLink ? "Enviando..." : "📲 Enviar por WhatsApp"}
                             </Text>
                           </TouchableOpacity>
                         </View>
@@ -996,6 +1032,17 @@ export function CheckoutSheet({
                         <Text style={styles.readerSubText}>
                           S/N: {connectedReader.serialNumber} • Batería: {Math.round((connectedReader.batteryLevel ?? 0.95) * 100)}%
                         </Text>
+                        <View style={styles.readerInlineActions}>
+                          <TouchableOpacity onPress={() => setShowReaderSelector((visible) => !visible)} style={styles.readerInlineBtn}>
+                            <Text style={styles.readerInlineBtnText}>{showReaderSelector ? "Ocultar terminales" : "Cambiar terminal"}</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => void checkReaderStatus()} style={styles.readerInlineBtn}>
+                            <Text style={styles.readerInlineBtnText}>Verificar estado</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <Text style={styles.readerSubText}>
+                          Estado: {readerHealth === "READY" ? "LISTA PARA COBRAR" : readerHealth}
+                        </Text>
                       </View>
                     ) : (
                       <View style={styles.readerDisconnectedBox}>
@@ -1005,19 +1052,22 @@ export function CheckoutSheet({
                       </View>
                     )}
 
-                    {discoveredReaders.length > 0 && !connectedReader && (
+                    {discoveredReaders.length > 0 && (showReaderSelector || !connectedReader) && (
                       <View style={styles.discoveredList}>
                         <Text style={styles.discoveredListTitle}>Lectores encontrados:</Text>
                         {discoveredReaders.map((r) => (
                           <TouchableOpacity
                             key={r.id}
-                            style={styles.discoveredItem}
+                            style={[styles.discoveredItem, connectedReader?.id === r.id && styles.discoveredItemSelected]}
                             onPress={() => void handleConnectReader(r)}
                           >
-                            <Text style={styles.discoveredItemText}>
-                              📲 {r.label || r.deviceType} ({r.serialNumber})
-                            </Text>
-                            <Text style={styles.connectActionText}>Conectar</Text>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.discoveredItemText}>
+                                📲 {r.label || r.deviceType} {defaultReaderId === r.id ? "· Predeterminada" : ""}
+                              </Text>
+                              <Text style={styles.readerSubText}>S/N: {r.serialNumber} · {r.status}</Text>
+                            </View>
+                            <Text style={styles.connectActionText}>{connectedReader?.id === r.id ? "Conectada" : "Usar"}</Text>
                           </TouchableOpacity>
                         ))}
                       </View>
@@ -1406,6 +1456,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
+  readerInlineActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+  },
+  readerInlineBtn: {
+    backgroundColor: "rgba(15, 23, 42, 0.65)",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  readerInlineBtnText: {
+    color: "#4ade80",
+    fontSize: 11,
+    fontWeight: "800",
+  },
   readerDisconnectedBox: {
     backgroundColor: "rgba(245, 158, 11, 0.1)",
     borderColor: "rgba(245, 158, 11, 0.25)",
@@ -1438,6 +1504,11 @@ const styles = StyleSheet.create({
     backgroundColor: IPAD_THEME.colors.surfaceSecondary,
     borderRadius: 6,
     marginBottom: 4,
+  },
+  discoveredItemSelected: {
+    borderWidth: 1,
+    borderColor: "rgba(74, 222, 128, 0.55)",
+    backgroundColor: "rgba(34, 197, 94, 0.12)",
   },
   discoveredItemText: {
     color: IPAD_THEME.colors.textPrimary,
@@ -1560,6 +1631,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: IPAD_THEME.spacing.sm,
     marginBottom: IPAD_THEME.spacing.md,
+  },
+  stripeLinkSuccess: {
+    color: "#4ade80",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "center",
+    marginBottom: IPAD_THEME.spacing.sm,
   },
   qrActionsRow: {
     flexDirection: "row",
