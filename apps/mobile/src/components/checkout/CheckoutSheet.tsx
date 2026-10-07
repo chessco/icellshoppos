@@ -139,6 +139,7 @@ export function CheckoutSheet({
   const [terminalStep, setTerminalStep] = useState<StripeTerminalOperationalState | null>(null);
   const [isUnknownState, setIsUnknownState] = useState(false);
   const [lastPaymentIntentId, setLastPaymentIntentId] = useState<string | null>(null);
+  const [cardMode, setCardMode] = useState<"terminal" | "manual">("terminal");
 
   // Fetch available target iPhones when selecting Card_Handoff on iPad
   useEffect(() => {
@@ -461,10 +462,10 @@ export function CheckoutSheet({
     }
 
     // ─── STRIPE PHYSICAL READER FLOW (iPad) ─────────────────────────────────
-    if (paymentMethod === "Card" && !isIPhone) {
+    if (paymentMethod === "Card" && !isIPhone && cardMode === "terminal") {
       if (!connectedReader) {
         setIsSubmitting(false);
-        setErrorMessage("Por favor conecte su lector Stripe (STRM26146031090) con el botón 'Buscar Lectores' antes de procesar el cobro con tarjeta.");
+        setErrorMessage("Por favor conecte su lector Stripe (STRM26146031090) con el botón 'Buscar Lectores' o cambie el selector a 'Terminal Externa / Manual'.");
         return;
       }
 
@@ -786,55 +787,109 @@ export function CheckoutSheet({
               </View>
             )}
 
-            {/* Stripe Reader Integration Status (Shown on iPad when Card is active) */}
+            {/* Stripe Reader vs Manual Card Mode Selection (Shown on iPad when Card is active) */}
             {paymentMethod === "Card" && !isIPhone && (
               <View style={styles.readerContainer}>
-                <View style={styles.readerHeaderRow}>
-                  <Text style={styles.readerHeaderTitle}>Lector Stripe Terminal</Text>
+                <View style={styles.cardModeToggleRow}>
                   <TouchableOpacity
-                    onPress={handleScanReaders}
-                    disabled={isDiscovering}
-                    style={styles.scanBtn}
+                    style={[
+                      styles.cardModeBtn,
+                      cardMode === "terminal" && styles.cardModeBtnActive,
+                    ]}
+                    onPress={() => {
+                      setCardMode("terminal");
+                      setErrorMessage(null);
+                    }}
                   >
-                    <Text style={styles.scanBtnText}>
-                      {isDiscovering ? "Buscando..." : "🔍 Buscar Lectores"}
+                    <Text
+                      style={[
+                        styles.cardModeBtnText,
+                        cardMode === "terminal" && styles.cardModeBtnTextActive,
+                      ]}
+                    >
+                      💳 Lector Stripe (STRM2)
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.cardModeBtn,
+                      cardMode === "manual" && styles.cardModeBtnActive,
+                    ]}
+                    onPress={() => {
+                      setCardMode("manual");
+                      setErrorMessage(null);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.cardModeBtnText,
+                        cardMode === "manual" && styles.cardModeBtnTextActive,
+                      ]}
+                    >
+                      🏦 Terminal Externa / Manual
                     </Text>
                   </TouchableOpacity>
                 </View>
 
-                {connectedReader ? (
+                {cardMode === "manual" ? (
                   <View style={styles.readerConnectedBox}>
                     <Text style={styles.readerConnectedText}>
-                      🟢 Conectado: <Text style={{ fontWeight: "900" }}>{connectedReader.label || connectedReader.deviceType}</Text>
+                      🏦 Modo Registro Directo / Terminal Externa
                     </Text>
                     <Text style={styles.readerSubText}>
-                      S/N: {connectedReader.serialNumber} • Batería: {Math.round((connectedReader.batteryLevel ?? 0.95) * 100)}%
+                      Permite registrar la venta con tarjeta sin conectar el lector Stripe físico (ideal si cobraste en Clip, terminal bancaria o en línea).
                     </Text>
                   </View>
                 ) : (
-                  <View style={styles.readerDisconnectedBox}>
-                    <Text style={styles.readerDisconnectedText}>
-                      ⚠️ Ningún lector conectado. Toque &quot;Buscar Lectores&quot; para emparejar.
-                    </Text>
-                  </View>
-                )}
-
-                {discoveredReaders.length > 0 && !connectedReader && (
-                  <View style={styles.discoveredList}>
-                    <Text style={styles.discoveredListTitle}>Lectores encontrados:</Text>
-                    {discoveredReaders.map((r) => (
+                  <>
+                    <View style={styles.readerHeaderRow}>
+                      <Text style={styles.readerHeaderTitle}>Lector Stripe Terminal</Text>
                       <TouchableOpacity
-                        key={r.id}
-                        style={styles.discoveredItem}
-                        onPress={() => void handleConnectReader(r)}
+                        onPress={handleScanReaders}
+                        disabled={isDiscovering}
+                        style={styles.scanBtn}
                       >
-                        <Text style={styles.discoveredItemText}>
-                          📲 {r.label || r.deviceType} ({r.serialNumber})
+                        <Text style={styles.scanBtnText}>
+                          {isDiscovering ? "Buscando..." : "🔍 Buscar Lectores"}
                         </Text>
-                        <Text style={styles.connectActionText}>Conectar</Text>
                       </TouchableOpacity>
-                    ))}
-                  </View>
+                    </View>
+
+                    {connectedReader ? (
+                      <View style={styles.readerConnectedBox}>
+                        <Text style={styles.readerConnectedText}>
+                          🟢 Conectado: <Text style={{ fontWeight: "900" }}>{connectedReader.label || connectedReader.deviceType}</Text>
+                        </Text>
+                        <Text style={styles.readerSubText}>
+                          S/N: {connectedReader.serialNumber} • Batería: {Math.round((connectedReader.batteryLevel ?? 0.95) * 100)}%
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.readerDisconnectedBox}>
+                        <Text style={styles.readerDisconnectedText}>
+                          ⚠️ Ningún lector conectado. Toque &quot;Buscar Lectores&quot; o elija &quot;Terminal Externa&quot;.
+                        </Text>
+                      </View>
+                    )}
+
+                    {discoveredReaders.length > 0 && !connectedReader && (
+                      <View style={styles.discoveredList}>
+                        <Text style={styles.discoveredListTitle}>Lectores encontrados:</Text>
+                        {discoveredReaders.map((r) => (
+                          <TouchableOpacity
+                            key={r.id}
+                            style={styles.discoveredItem}
+                            onPress={() => void handleConnectReader(r)}
+                          >
+                            <Text style={styles.discoveredItemText}>
+                              📲 {r.label || r.deviceType} ({r.serialNumber})
+                            </Text>
+                            <Text style={styles.connectActionText}>Conectar</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
+                  </>
                 )}
               </View>
             )}
@@ -1306,5 +1361,34 @@ const styles = StyleSheet.create({
     color: IPAD_THEME.colors.textSecondary,
     fontSize: 12,
     lineHeight: 16,
+  },
+  cardModeToggleRow: {
+    flexDirection: "row",
+    gap: IPAD_THEME.spacing.sm,
+    marginBottom: IPAD_THEME.spacing.md,
+  },
+  cardModeBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: IPAD_THEME.radius.md,
+    backgroundColor: IPAD_THEME.colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: IPAD_THEME.colors.borderSubtle,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardModeBtnActive: {
+    backgroundColor: "rgba(56, 189, 248, 0.15)",
+    borderColor: "#38bdf8",
+  },
+  cardModeBtnText: {
+    color: IPAD_THEME.colors.textSecondary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  cardModeBtnTextActive: {
+    color: "#38bdf8",
+    fontWeight: "900",
   },
 });

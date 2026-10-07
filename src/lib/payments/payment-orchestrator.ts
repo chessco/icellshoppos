@@ -314,7 +314,7 @@ export class PaymentOrchestrator {
         organizationId,
         posPaymentId: posPayment.id,
         paymentAttemptId: paymentAttempt.id,
-        stripeReaderId: stripeReaderId || null,
+        stripeReaderId: validStripeReaderId || null,
         stripePaymentIntentId: stripeIntent.id,
         stripeCustomerId: typeof stripeIntent.customer === "string" ? stripeIntent.customer : null,
         amount: money.decimalAmount,
