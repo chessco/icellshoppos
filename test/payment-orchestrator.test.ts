@@ -89,6 +89,13 @@ class MockStripePaymentAdapter implements IStripePaymentAdapter {
     const parsed = typeof rawBody === "string" ? JSON.parse(rawBody) : JSON.parse(rawBody.toString());
     return parsed as Stripe.Event;
   }
+
+  async createCheckoutSession(params: any): Promise<any> {
+    return {
+      id: `cs_test_${Date.now()}`,
+      url: `https://checkout.stripe.com/pay/cs_test_${Date.now()}`,
+    };
+  }
 }
 
 test("Payment Orchestrator: Integration with Mocked Stripe Adapter", async (t) => {
